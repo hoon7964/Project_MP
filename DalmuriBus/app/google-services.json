@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "883309583547",
+    "firebase_url": "https://dalmuri-bus-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "dalmuri-bus",
     "storage_bucket": "dalmuri-bus.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.dalmuri.bus"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "883309583547-4g6viq5l5pufmba074mbla89g1is6q04.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dalmuri.bus",
+            "certificate_hash": "48b0d7d5936c9610c3c2e08789d26d468a48df94"
+          }
+        },
+        {
+          "client_id": "883309583547-2ogf95lhjm10hr4m54opi60jchqscu50.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBE8FAuFoDmLYrIcRHAJTZFEZt4fs4GukY"
@@ -20,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "883309583547-2ogf95lhjm10hr4m54opi60jchqscu50.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
