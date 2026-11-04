@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "883309583547",
+    "project_id": "dalmuri-bus",
+    "storage_bucket": "dalmuri-bus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883309583547:android:f6a1970852fa403fa3dd9e",
+        "android_client_info": {
+          "package_name": "com.dalmuri.bus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBE8FAuFoDmLYrIcRHAJTZFEZt4fs4GukY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
