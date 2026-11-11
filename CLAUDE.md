@@ -199,7 +199,7 @@ y = (m(north) - m(lat)) / (m(north) - m(south)) * heightPx
 3. 연결 확인도 각자 한다. 백이 `server/README.md`에 서버 실행법을 적어 두면, 프론트가 자기 노트북에서 pull 받아 서버를 직접 켜고 앱을 붙인다.
 4. 상대 쪽 버그를 찾으면 카톡(또는 GitHub 이슈)으로 "무엇을 했더니 → 무엇이 나왔다"를 남긴다.
 5. 작업 시작 전 pull, 작업 하나 끝나면 commit·push. 커밋 메시지 앞머리: `[프론트]`, `[백]`.
-6. `local.properties`, `.env`(카카오 키 등), `.idea/`, `node_modules/`, DB 파일은 커밋하지 않는다.
+6. `local.properties`, `.env`(지금은 필요한 키 없음), `.idea/`, `node_modules/`, DB 파일은 커밋하지 않는다.
 
 ## 8. 시연 시나리오 (11/29 완료 기준, 각자 자기 노트북에서 끝까지 돌려 봄)
 

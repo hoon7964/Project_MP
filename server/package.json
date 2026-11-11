@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node --no-warnings=ExperimentalWarning index.js",
     "test:engine": "node --no-warnings=ExperimentalWarning scripts/test-engine.js",
+    "test:api": "node scripts/test-api.js",
     "collect": "node scripts/collect.js",
     "collect:refresh": "node scripts/collect.js --refresh-osm"
   },

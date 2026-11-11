@@ -1,22 +1,47 @@
-// 달무리버스 서버 (B2 뼈대). API는 B4에서 이 파일에 붙인다.
-//   npm start → http://localhost:3000/ (웹 관제), 에뮬레이터에서는 http://10.0.2.2:3000
+// 달무리버스 서버
+//   npm start → 웹 관제 http://localhost:3000/ , 에뮬레이터에서는 http://10.0.2.2:3000
+//   API는 api.js (공통 규약 3), 배차·이동은 engine.js, DB는 db.js
 
 const path = require('path');
 const express = require('express');
 const config = require('./config');
 const { openDb } = require('./db');
 const { createEngine } = require('./engine');
+const { createApi } = require('./api');
 
 const db = openDb();
 const engine = createEngine({ stops: db.getStops(), config });
+const api = createApi({ db, engine });
 
 const app = express();
+
+// 요청 한 줄 로그 (앱 2초 조회는 너무 많아서 /calls/{id} GET은 빼고)
+app.use((req, res, next) => {
+  if (!(req.method === 'GET' && req.path.startsWith('/calls/'))) {
+    res.on('finish', () => console.log(`[${engine.simClock()}] ${req.method} ${req.originalUrl} → ${res.statusCode}`));
+  }
+  next();
+});
 app.use(express.json());
+
+// api.js의 { status, body | file } → Express 응답
+const send = (res, r) => (r.file ? res.status(r.status).sendFile(r.file) : res.status(r.status).json(r.body));
+
+app.get('/stops', (req, res) => send(res, api.getStops()));
+app.get('/map', (req, res) => send(res, api.getMap()));
+app.get('/map/image', (req, res) => send(res, api.getMapImage()));
+app.post('/calls', (req, res) => send(res, api.postCall(req.body)));
+app.get('/calls/:callId', (req, res) => send(res, api.getCall(req.params.callId)));
+app.get('/buses', (req, res) => send(res, api.getBuses()));
+app.get('/health', (req, res) => res.json({ ok: true, simClock: engine.simClock(), stops: db.getStops().length, buses: config.BUS_COUNT }));
+
 app.use(express.static(path.join(__dirname, '..', 'web'))); // 웹 관제 (web/index.html)
 
-// 살아 있는지 확인용 (B4에서 공통 규약 API를 여기에 더함)
-app.get('/health', (req, res) => {
-  res.json({ ok: true, simClock: engine.simClock(), stops: db.getStops().length, buses: config.BUS_COUNT });
+// JSON 형식이 깨진 요청 등 → 400, 그 밖의 오류 → 500
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON 형식이 잘못됨' });
+  console.error(err);
+  res.status(500).json({ error: '서버 오류' });
 });
 
 // 시뮬레이션 시계: 실제 1초마다 시뮬 (SIM_SPEED / 60)분 진행
