@@ -17,14 +17,16 @@
 ### 1주차 (11/12~11/20)
 
 - [ ] **B0. 준비 (1h)**
-  - 서울 열린데이터광장(data.seoul.go.kr)의 **"서울시 버스정류소 위치정보"**(OA-15067)에서 가장 최근 파일을 내려받아 `server/data/raw/`에 둔다. 파일 다운로드라 인증키가 필요 없다 (공공데이터포털 API 키는 신청하지 않음)
+  - 서울 열린데이터광장(data.seoul.go.kr)의 **"서울시 버스정류소 위치정보"**(OA-15067)에서 가장 최근 파일을 내려받아 `server/data/raw/`에 둔다. 같은 곳의 **"서울시 버스노선별 정류소 정보"**(OA-1095) 최신 파일도 받는다 (정류장마다 서는 N버스 확인용). 파일 다운로드라 인증키가 필요 없다 (공공데이터포털 API 키는 신청하지 않음)
   - 레포 루트에 `server/`, `web/` 폴더 만들기. 웹 시뮬레이터 HTML을 참고용으로 `web/index.html`에 두고 관제 화면의 출발점으로 씀. `.gitignore`에 `node_modules/`, `.env`, DB 파일
   - 웹 시뮬레이터를 읽고 끼워넣기 배차 방식(`attemptInsertGlobal`, `evaluateBusRoute` 등)과 상수를 정리. 서버에서 쓸 함수·데이터 구조를 정한다 (그대로 옮기는 게 아니라 참고)
 - [ ] **B1. 데이터 수집 스크립트: 정류장 + 지도 (3~4h)** — 교수님: "긁어와서 서버에 DB화", "지도 데이터도 다 받아놓고, 이미지로 받든…"
-  - `server/data/area.json`: 시범지역 사각형(north·south·west·east — 북서 태릉입구역 · 북동 봉화산역·신내역 · 남서 상봉역 · 남동 망우역·우림시장)과 시범 정류장 ID 목록. 정류장과 지도가 이 범위 하나를 같이 쓴다
+  - `server/data/area.json`: 시범지역 사각형(north·south·west·east — 북서 태릉입구역 · 북동 봉화산역·신내역 · 남서 상봉역 · 남동 망우역·우림시장)과 시범 정류장 ID 목록(`hubStopIds` 승차 거점 6개 = N버스 서는 역 앞, `homeStopIds` 주거지 19개). 정류장과 지도가 이 범위 하나를 같이 쓴다
+  - 노선별 정류소 파일에서 노선명이 N으로 시작하는 심야버스를 골라 정류장마다 `nightRoutes`로 붙인다. 이 범위에는 N13·N26·N61·N72가 지난다. 승차 거점에 N버스가 안 서면 경고
   - `npm run collect`(`server/scripts/collect.js`) 한 번으로 정류장과 지도를 같이 만든다
-  - 정류장: `server/data/raw/`의 정류소 위치정보 파일을 읽어 사각형 안 정류소만 `server/data/stops-all.json`으로 뽑는다. 정류소번호(ARS-ID)는 5자리 문자열로 맞추고(앞자리 0이 빠진 4자리면 0을 붙임), 좌표는 WGS84 위도·경도 그대로. 그중 `area.json`에 적은 시범 정류장 8~15개(역 주변·주거지·대로변 골고루, 서로 너무 붙지 않게)만 `server/data/stops.json`으로
-  - 지도: 같은 사각형의 OpenStreetMap 타일(줌 17, 약 150장)을 한 번만 받아 이어 붙이고 사각형으로 잘라 `server/data/map.png`(가로 약 2,900px)와 `server/data/map.json`(`MapInfo`: 범위 4개 = area.json 그대로, 이미지 크기, 출처)으로 저장. OSM 타일 이용 정책대로 User-Agent를 넣고 요청 사이를 쉬며, 이미 있으면 다시 받지 않는다
+  - 정류장: `server/data/raw/`의 정류소 위치정보 파일을 읽어 사각형 안 정류소만 `server/data/stops-all.json`으로 뽑는다. 정류소번호(ARS-ID)는 5자리 문자열로 맞추고(앞자리 0이 빠진 4자리면 0을 붙임), 좌표는 WGS84 위도·경도 그대로. 그중 `area.json`에 적은 시범 정류장 25개(승차 거점 6 → 주거지 19 순, 서로 300m 이상 떨어지게)만 `server/data/stops.json`으로
+  - 지도: 같은 사각형의 OSM 지도 데이터(도로·철도·공원·물·건물)를 Overpass API로 한 번 받아 `server/data/raw/osm-area.json`에 두고, 그걸로 다크 테마 지도를 직접 그려 `server/data/map.png`(2400×2306px)와 `server/data/map.json`(`MapInfo`: 범위 4개 = area.json 그대로, 이미지 크기, 출처)으로 저장. OSM 타일 서버 그림을 미리 받아 두는 건 이용 정책상 금지라 쓰지 않는다. 받아 둔 데이터가 있으면 다시 받지 않는다 (`npm run collect:refresh`로 새로 받기)
+  - 확인용 `server/data/map-check.png`: 지도 위에 범위 안 정류장(회색, N버스 서는 곳은 하늘색)과 시범 정류장(파랑 = 승차 거점, 노랑 = 주거지, 옆 숫자 = 순번)을 찍은 그림
   - `raw/` 원본, `stops.json`, `map.json`, `map.png`는 커밋한다 (프론트가 수집 없이 서버를 켤 수 있게). 서버는 시작할 때 SQLite DB(`stops`, `map_info`)가 없으면 이 파일들로 만든다. DB 파일은 커밋하지 않는다
   - 완료 기준: `npm run collect` 후 `stops.json` 좌표가 위도 37.x / 경도 127.x이고, 정류장 몇 개를 공통 규약 5의 식으로 픽셀로 바꿔 `map.png`에 찍었을 때 실제 자리와 맞음
 - [ ] **B3. 서버 뼈대 + 배차 엔진 작성 (4~5h)**
