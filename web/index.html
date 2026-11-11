@@ -1,1694 +1,430 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>달무리버스 · 중랑구 봉화산 일대 심야 자율주행 3대 플릿 동적 배차 관제 시스템</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
-<!-- Leaflet CSS -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>달무리버스 관제</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
+  /* ───────── 달무리버스 관제 ─────────
+     밤하늘 남색 바탕. 승차 거점 = 블루, 주거지(집) = 달빛 골드. 버스 3대는 민트·로즈·라벤더.
+     지도는 서버 지도 그림 비율(/map의 widthPx:heightPx) 그대로 화면 높이에 맞춘다. */
   :root {
-    --bg-base: #06090e;
-    --panel-bg: rgba(14, 21, 33, 0.9);
-    --panel-surface: rgba(19, 29, 46, 0.8);
-    --panel-sub: #152032;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-light: rgba(255, 255, 255, 0.15);
-    --border-glow: rgba(0, 229, 204, 0.35);
-
-    --text-title: #ffffff;
-    --text-body: #e2e8f0;
-    --text-sub: #94a3b8;
-    --text-muted: #64748b;
-
-    --brand-cyan: #00e5cc;
-    --brand-cyan-glow: rgba(0, 229, 204, 0.4);
-    --brand-amber: #f59e0b;
-    --brand-amber-glow: rgba(245, 158, 11, 0.35);
-    --brand-purple: #a855f7;
-    --brand-purple-glow: rgba(168, 85, 247, 0.35);
-    --brand-red: #ef4444;
-    --brand-green: #10b981;
-    --brand-blue: #3b82f6;
-
-    --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --night: #0c1424;
+    --night-2: #121c31;
+    --night-3: #1a2640;
+    --line: #25324e;
+    --ink: #e9edf6;
+    --ink-2: #98a3bd;
+    --ink-3: #66718c;
+    --board: #5b9bff;
+    --moon: #f2c46d;
+    --ok: #7fd1a4;
+    --warn: #f08a7e;
+    --serif: "Gowun Batang", "Noto Serif KR", "Noto Serif CJK KR", "Batang", serif;
+    --sans: "IBM Plex Sans KR", "Pretendard", "Noto Sans KR", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif;
+    --header-h: 72px;
+    --rail-min: 380px;
+    --map-ratio: 2400 / 2306; /* control.js가 /map 값으로 덮어씀 */
   }
-
-  *, *::before, *::after {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
   body {
-    background-color: var(--bg-base);
-    background-image: 
-      radial-gradient(circle at 8% 0%, rgba(0, 229, 204, 0.07) 0%, transparent 45%),
-      radial-gradient(circle at 92% 100%, rgba(168, 85, 247, 0.07) 0%, transparent 45%),
-      linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
-    color: var(--text-body);
-    font-family: var(--font-sans);
+    background: var(--night);
+    color: var(--ink);
+    font: 400 14px/1.55 var(--sans);
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
-    padding: 18px;
-    display: flex;
-    justify-content: center;
   }
+  button, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--moon); outline-offset: 2px; }
 
-  .mono { font-family: var(--font-mono); }
-
-  .app-container {
-    width: 100%;
-    max-width: 1560px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+  /* ───────── 머리줄 ───────── */
+  .top {
+    height: var(--header-h);
+    display: flex; align-items: center; gap: 22px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--line);
   }
-
-  /* 1. TOP HEADER */
-  .top-header {
-    background: linear-gradient(135deg, rgba(18, 27, 43, 0.92), rgba(11, 18, 29, 0.88));
-    border: 1px solid var(--border);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
-    backdrop-filter: blur(24px);
-    border-radius: 18px;
-    padding: 14px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 14px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; flex: none; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle, #fff6dc 0 7px, transparent 8px);
+    box-shadow: 0 0 0 3px rgba(242, 196, 109, .2), 0 0 0 8px rgba(242, 196, 109, .07), 0 0 20px rgba(242, 196, 109, .35);
   }
+  .brand h1 { margin: 0; font: 700 22px/1.1 var(--serif); letter-spacing: -.01em; }
+  .brand p { margin: 3px 0 0; color: var(--ink-2); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
+  .clock { flex: none; display: flex; align-items: center; gap: 12px; }
+  .clock svg { width: 46px; height: 46px; flex: none; }
+  .clock .time { font: 700 26px/1 var(--serif); }
+  .clock .sub { color: var(--ink-2); font-size: 12px; margin-top: 4px; white-space: nowrap; }
 
-  .brand-badge {
-    background: linear-gradient(135deg, var(--brand-cyan), #00a896);
-    color: #04211d;
-    font-weight: 900;
-    font-size: 14px;
-    padding: 7px 14px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    box-shadow: 0 0 18px var(--brand-cyan-glow);
-    white-space: nowrap;
-    letter-spacing: -0.2px;
-  }
+  .speed { flex: none; display: flex; background: var(--night-3); border-radius: 999px; padding: 3px; }
+  .speed button { border: 0; background: none; padding: 6px 13px; border-radius: 999px; color: var(--ink-2); font-size: 13px; font-weight: 500; }
+  .speed button:hover { color: var(--ink); }
+  .speed button.active { background: var(--ink); color: var(--night); }
+  .reset { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 7px 14px; color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+  .reset:hover { color: var(--ink); border-color: var(--ink-3); }
 
-  .header-title-box h1 {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--text-title);
-    letter-spacing: -0.3px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  /* Dynamic Active Bus Pill */
-  .fleet-pill {
-    background: rgba(148, 163, 184, 0.12);
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    color: #94a3b8;
-    font-size: 11.5px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-weight: 800;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.3s ease;
-  }
-
-  .fleet-pill.active-1 {
-    background: rgba(0, 229, 204, 0.12);
-    border-color: rgba(0, 229, 204, 0.45);
-    color: var(--brand-cyan);
-    box-shadow: 0 0 12px rgba(0, 229, 204, 0.25);
-  }
-
-  .fleet-pill.active-2 {
-    background: rgba(245, 158, 11, 0.12);
-    border-color: rgba(245, 158, 11, 0.45);
-    color: var(--brand-amber);
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
-  }
-
-  .fleet-pill.active-3 {
-    background: rgba(168, 85, 247, 0.15);
-    border-color: rgba(168, 85, 247, 0.55);
-    color: #d8b4fe;
-    box-shadow: 0 0 14px rgba(168, 85, 247, 0.35);
-  }
-
-  .header-title-box p {
-    font-size: 12.5px;
-    color: var(--text-sub);
-    margin-top: 3px;
-  }
-
-  .header-controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .time-chip {
-    background: rgba(4, 8, 14, 0.65);
-    border: 1px solid var(--border-glow);
-    border-radius: 12px;
-    padding: 6px 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    white-space: nowrap;
-    box-shadow: inset 0 2px 8px rgba(0,0,0,0.5), 0 0 12px rgba(0, 229, 204, 0.1);
-  }
-
-  .time-chip .label {
-    font-size: 11.5px;
-    color: var(--text-sub);
-    font-weight: 600;
-  }
-
-  .time-chip .val {
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--brand-cyan);
-    letter-spacing: 1px;
-    text-shadow: 0 0 10px var(--brand-cyan-glow);
-  }
-
-  .speed-group {
-    display: flex;
-    background: rgba(4, 8, 14, 0.5);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 3px;
-    gap: 2px;
-  }
-
-  .speed-group button {
-    background: transparent;
-    border: none;
-    color: var(--text-sub);
-    padding: 6px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    border-radius: 7px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .speed-group button.active {
-    background: linear-gradient(135deg, var(--brand-cyan), #00b4a0);
-    color: #04211d;
-    box-shadow: 0 2px 8px var(--brand-cyan-glow);
-  }
-
-  .btn-reset {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--brand-red);
-    padding: 8px 14px;
-    border-radius: 10px;
-    font-size: 12.5px;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-  }
-
-  .btn-reset:hover {
-    background: rgba(239, 68, 68, 0.22);
-    border-color: var(--brand-red);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
-  }
-
-  /* 2. TOP STORY BANNER (IMAGE 100% EXACT REPLICATION) */
-  .story-container {
-    background: linear-gradient(135deg, rgba(16, 25, 39, 0.92), rgba(11, 17, 27, 0.88));
-    border: 1px solid var(--border);
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(20px);
-    border-radius: 18px;
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  }
-
-  .story-main-title {
-    font-size: 19px;
-    font-weight: 900;
-    color: #ffffff;
-    text-align: center;
-    letter-spacing: -0.3px;
-  }
-
-  .story-main-title span.blue-glow {
-    color: #38bdf8;
-    text-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
-  }
-
-  .story-3col-grid {
+  /* ───────── 본문: 지도(그림 비율 고정) + 오른쪽 패널 ───────── */
+  .stage {
     display: grid;
-    grid-template-columns: 260px 1fr 220px;
-    gap: 16px;
-    align-items: stretch;
+    grid-template-columns: auto minmax(var(--rail-min), 1fr);
+    height: calc(100vh - var(--header-h));
   }
-
-  @media (max-width: 1200px) {
-    .story-3col-grid { grid-template-columns: 1fr; }
-  }
-
-  /* Left: Persona Card */
-  .persona-box {
-    background: #ffffff;
-    color: #1e293b;
-    border-radius: 14px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-  }
-
-  .persona-avatar-wrap {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    background: #fff3d4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 40px;
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
-  }
-
-  .persona-titles {
-    text-align: left;
-    width: 100%;
-  }
-
-  .persona-titles h3 {
-    font-size: 16px;
-    font-weight: 900;
-    color: #0f172a;
-  }
-
-  .persona-titles p {
-    font-size: 12.5px;
-    color: #475569;
-    font-weight: 700;
-    margin-top: 2px;
-  }
-
-  .persona-box-list {
-    width: 100%;
-    border: 1.5px solid #38bdf8;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 11.5px;
-    color: #0f172a;
-    line-height: 1.55;
-    font-weight: 600;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  /* Center: Before vs After Diagrams */
-  .diagram-box {
-    background: #ffffff;
-    color: #0f172a;
-    border-radius: 14px;
-    padding: 18px 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 14px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  .map-wrap {
     position: relative;
-  }
-
-  .diagram-row {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .diagram-row-title {
-    font-size: 13.5px;
-    font-weight: 900;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .diagram-row-title.asis { color: #475569; }
-  .diagram-row-title.tobe { color: #0f172a; }
-
-  .diagram-bar-container {
-    display: flex;
-    height: 38px;
-    border-radius: 6px;
+    /* 높이는 화면을 꽉 채우되, 패널 자리(--rail-min)는 남긴다. 폭은 aspect-ratio가 정함 */
+    height: min(calc(100vh - var(--header-h)), calc((100vw - var(--rail-min)) / (var(--map-ratio))));
+    aspect-ratio: var(--map-ratio);
+    background: #0e1320;
+    border-right: 1px solid var(--line);
     overflow: hidden;
-    font-size: 11.5px;
-    font-weight: 800;
-    color: #ffffff;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
+  #map { position: absolute; inset: 0; background: #0e1320; }
 
-  .bar-seg {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 8px;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  /* 관제 방송: 머리줄 가운데 한 줄 (지도를 가리지 않게 지도 밖에 둠) */
+  .cast {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; border-radius: 12px; border: 1px solid transparent;
   }
+  .cast small { color: var(--ink-3); font-size: 12px; white-space: nowrap; flex: none; }
+  .cast span { font-size: 13.5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .cast.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { from { border-color: rgba(242, 196, 109, .7); background: rgba(242, 196, 109, .08); } to { border-color: transparent; background: transparent; } }
 
-  .bar-seg.bus-drop { background: #94a3b8; flex: 0 0 90px; color: #1e293b; font-weight: 900; }
-  .bar-seg.walk-long { background: #7f1d1d; flex: 1; color: #fee2e2; }
-  .bar-seg.home-reach { background: #15803d; flex: 0 0 65px; color: #dcfce7; }
+  /* 지금 상황: 숫자 3개 + 범례 */
+  .now { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; }
+  .stats { display: flex; }
+  .stats div { padding: 0 20px; border-left: 1px solid var(--line); }
+  .stats div:first-child { border-left: 0; padding-left: 0; }
+  .stats b { display: block; font: 700 26px/1.1 var(--serif); }
+  .stats span { color: var(--ink-2); font-size: 12px; }
+  .legend { display: grid; gap: 5px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .row { display: flex; align-items: center; gap: 8px; }
+  .legend .buses { display: flex; gap: 14px; }
+  .legend .buses span { display: flex; align-items: center; gap: 6px; }
 
-  .bar-seg.wait-node { background: #0284c7; flex: 0 0 100px; color: #e0f2fe; }
-  .bar-seg.dalmuri-node { background: #d97706; flex: 1; color: #fef3c7; }
-  .bar-seg.walk-short { background: #7f1d1d; flex: 0 0 75px; color: #fee2e2; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+  .dot.board { background: var(--board); box-shadow: 0 0 0 3px rgba(91, 155, 255, .25); }
+  .dot.home { background: var(--moon); box-shadow: 0 0 0 3px rgba(242, 196, 109, .18); }
+  .dot.ring { background: none; border: 2px solid var(--c); }
 
-  .diagram-time-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-    color: #64748b;
-    font-weight: 700;
-  }
-
-  .yellow-highlight-tag {
-    background: #fde047;
-    color: #000000;
-    font-size: 12px;
-    font-weight: 900;
-    padding: 2px 8px;
-    border-radius: 4px;
-    display: inline-block;
-    margin: 0 auto;
-  }
-
-  .floating-reduction-badge {
-    position: absolute;
-    right: 20px;
-    bottom: 24px;
-    background: #f59e0b;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 900;
-    padding: 4px 8px;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
-    transform: rotate(2deg);
-  }
-
-  /* Right: Cost Comparison Box */
-  .cost-box {
-    background: #ffffff;
-    color: #0f172a;
-    border-radius: 14px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    text-align: center;
-  }
-
-  .cost-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    text-align: center;
-  }
-
-  .cost-item h4 {
-    font-size: 13.5px;
-    font-weight: 900;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-  }
-
-  .cost-item .val {
-    font-size: 18px;
-    font-weight: 900;
-    color: #0f172a;
-    margin-top: 2px;
-  }
-
-  .cost-item .desc {
-    font-size: 10.5px;
-    color: #64748b;
-    font-weight: 600;
-  }
-
-  .save-highlight-pill {
-    background: #fde047;
-    color: #000000;
-    font-size: 12px;
-    font-weight: 900;
-    padding: 3px 8px;
-    border-radius: 4px;
-    display: inline-block;
-    margin: 0 auto;
-  }
-
-  /* 3. MAIN WORKSPACE GRID */
-  .workspace-grid {
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 16px;
-    align-items: stretch;
-  }
-
-  @media (max-width: 1080px) {
-    .workspace-grid { grid-template-columns: 1fr; }
-  }
-
-  /* Map Panel */
-  .map-panel {
-    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
-    border: 1px solid var(--border);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(20px);
-    border-radius: 18px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  }
-
-  .panel-header-simple {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .panel-title {
-    font-size: 14px;
-    font-weight: 800;
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    letter-spacing: -0.2px;
-  }
-
-  .panel-title::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--brand-cyan);
-    box-shadow: 0 0 10px var(--brand-cyan-glow);
-  }
-
-  .map-box {
-    width: 100%;
-    height: 560px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    overflow: hidden;
-    position: relative;
-    box-shadow: inset 0 0 24px rgba(0,0,0,0.6), 0 4px 20px rgba(0,0,0,0.3);
-  }
-
-  #map { width: 100%; height: 100%; }
-
-  .map-legend-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 12px;
-    color: var(--text-sub);
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 2px 4px;
-  }
-
-  .legend-items {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 700;
-  }
-
-  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-
-  /* Right Control & Live Cards */
-  .control-column {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-width: 0;
-  }
-
-  /* One-Click Action Card */
-  .action-panel {
-    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
-    border: 1px solid var(--border);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(20px);
-    border-radius: 18px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  }
-
-  .btn-main-action {
-    width: 100%;
-    background: linear-gradient(135deg, #00e5cc, #00b4d8);
-    color: #03201d;
-    border: none;
-    border-radius: 12px;
-    padding: 14px 16px;
-    font-size: 14.5px;
-    font-weight: 900;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    box-shadow: 0 4px 18px var(--brand-cyan-glow);
-    transition: all 0.25s ease;
-  }
-
-  .btn-main-action:hover {
-    transform: translateY(-1px);
-    filter: brightness(1.1);
-    box-shadow: 0 6px 22px rgba(0, 229, 204, 0.5);
-  }
-
-  .btn-sub-action {
-    width: 100%;
-    background: var(--panel-surface);
-    border: 1px dashed rgba(255, 255, 255, 0.2);
-    color: var(--text-body);
-    border-radius: 12px;
-    padding: 11px 14px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.25s ease;
-  }
-
-  .btn-sub-action:hover {
-    border-color: var(--brand-amber);
-    color: var(--brand-amber);
-    background: rgba(245, 158, 11, 0.1);
-    box-shadow: 0 0 14px rgba(245, 158, 11, 0.2);
-  }
-
-  /* Fleet Realtime Mini Status Card */
-  .fleet-status-card {
-    background: var(--panel-surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 10px 12px;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-    text-align: center;
-  }
-
-  .fleet-bus-item {
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 7px 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .fleet-bus-item.bus1 { border-color: rgba(0, 229, 204, 0.4); }
-  .fleet-bus-item.bus2 { border-color: rgba(236, 72, 153, 0.4); }
-  .fleet-bus-item.bus3 { border-color: rgba(168, 85, 247, 0.4); }
-
-  .fleet-bus-title {
-    font-size: 11.5px;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-  }
-
-  .fleet-bus-stat {
-    font-size: 11.5px;
-    font-weight: 700;
-    font-family: var(--font-mono);
-  }
-
-  /* Custom Manual Call Form */
-  .manual-call-box {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 11px 13px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-  }
-
-  .manual-call-box label {
-    font-size: 11.5px;
-    color: var(--text-sub);
-    font-weight: 600;
-  }
-
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: 6px;
-    align-items: center;
-    width: 100%;
-  }
-
-  select {
-    width: 100%;
-    background: var(--panel-surface);
-    border: 1px solid var(--border);
-    color: var(--text-title);
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    outline: none;
-    font-family: inherit;
-    text-overflow: ellipsis;
-    transition: border 0.2s ease;
-  }
-
-  select:focus {
-    border-color: var(--brand-cyan);
-  }
-
-  .btn-call-manual {
-    background: var(--panel-surface);
-    border: 1px solid var(--brand-cyan);
-    color: var(--brand-cyan);
-    font-weight: 800;
-    padding: 8px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12.5px;
-    white-space: nowrap;
-    transition: all 0.2s ease;
-  }
-
-  .btn-call-manual:hover {
-    background: var(--brand-cyan);
-    color: #04211d;
-    box-shadow: 0 0 10px var(--brand-cyan-glow);
-  }
-
-  /* Live Broadcast Status Card */
-  .live-status-card {
-    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
-    border: 1px solid var(--border);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(20px);
-    border-radius: 18px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    flex: 1;
-    min-width: 0;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  }
-
-  .status-broadcast {
-    background: rgba(4, 8, 14, 0.55);
-    border: 1px solid rgba(0, 229, 204, 0.3);
-    border-radius: 12px;
-    padding: 11px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-  }
-
-  .status-broadcast-title {
-    font-size: 11px;
-    font-weight: 800;
-    color: var(--brand-cyan);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    letter-spacing: 0.5px;
-  }
-
-  .status-broadcast-msg {
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #ffffff;
-    line-height: 1.45;
-    word-break: keep-all;
-  }
-
-  /* Passenger Simple List */
-  .pax-simple-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 180px;
-    overflow-y: auto;
-    padding-right: 3px;
-  }
-
-  .pax-simple-item {
-    background: var(--panel-surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 9px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-  }
-
-  .pax-simple-item .name { font-weight: 700; color: #ffffff; white-space: nowrap; }
-  .pax-simple-item .bus-tag {
-    font-size: 10.5px;
-    font-weight: 800;
-    padding: 2px 6px;
-    border-radius: 5px;
-    margin-left: 4px;
-    font-family: var(--font-mono);
-  }
-  .pax-simple-item .route { color: var(--text-sub); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pax-simple-item .state-tag {
-    font-size: 10.5px;
-    font-weight: 800;
-    padding: 2px 7px;
-    border-radius: 6px;
-    white-space: nowrap;
-    font-family: var(--font-mono);
-  }
-
-  .state-tag.waiting { background: rgba(245, 158, 11, 0.18); color: var(--brand-amber); }
-  .state-tag.onboard { background: rgba(0, 229, 204, 0.18); color: var(--brand-cyan); }
-  .state-tag.dropped { background: rgba(16, 185, 129, 0.18); color: var(--brand-green); }
-
-  /* Map Marker Custom Elements */
-  .pin-node {
-    position: relative; width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .pin-core {
-    width: 25px; height: 25px; border-radius: 50%;
-    background: #ffffff; border: 3px solid #f2a93b;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-    position: relative;
-  }
-  .pin-core.hub {
-    background: #e6f0ff; border-color: #3d8bff;
-    box-shadow: 0 0 14px rgba(61, 139, 255, 0.55);
-  }
-  .pin-center {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #f2a93b; position: absolute;
-    top: 50%; left: 50%; transform: translate(-50%, -50%);
-  }
-  .pin-core.hub .pin-center { background: #3d8bff; }
-
-  .pin-title {
-    position: absolute; top: 28px; left: 50%; transform: translateX(-50%);
-    background: rgba(8, 12, 18, 0.95); border: 1px solid rgba(255,255,255,0.2);
-    color: #ffffff; font-size: 11px; font-weight: 800; padding: 2px 8px;
-    border-radius: 5px; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+  /* ───────── 지도 표시물 (Leaflet divIcon 안쪽) ───────── */
+  .stop { position: relative; width: 100%; height: 100%; display: grid; place-items: center; cursor: pointer; }
+  .stop i { display: block; border-radius: 50%; transition: transform .15s; }
+  .stop:hover i { transform: scale(1.25); }
+  .stop.hub i { width: 14px; height: 14px; background: var(--board); box-shadow: 0 0 0 4px rgba(91, 155, 255, .28), 0 0 14px rgba(91, 155, 255, .65); }
+  .stop.home i { width: 10px; height: 10px; background: var(--moon); box-shadow: 0 0 0 3px rgba(242, 196, 109, .22); }
+  .stop .name {
+    position: absolute; top: 21px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 11.5px; font-weight: 600; color: #d3e3ff;
+    text-shadow: 0 1px 2px #0c1424, 0 0 6px #0c1424, 0 0 10px #0c1424;
     pointer-events: none;
   }
+  .stop.edge-l .name { left: 2px; transform: none; }
+  .stop.edge-r .name { left: auto; right: 2px; transform: none; }
+  .stop .wait {
+    position: absolute; top: -7px; left: 15px;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    background: var(--ink); color: var(--night); font-size: 11px; font-weight: 600;
+    display: none; place-items: center; box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+  }
+  .stop .wait.on { display: grid; }
 
-  .pin-wait-count {
-    position: absolute; top: -7px; right: -7px;
-    background: var(--brand-amber); color: #000; font-size: 10px; font-weight: 900;
-    width: 18px; height: 18px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  .bus { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
+  .bus .halo { position: absolute; inset: 2px; border-radius: 50%; border: 2px solid var(--c); opacity: .35; }
+  .bus .core {
+    position: relative;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--night); border: 3px solid var(--c);
+    display: grid; place-items: center; font-weight: 600; font-size: 12px; color: var(--ink);
+    box-shadow: 0 0 14px var(--glow);
+  }
+  .bus .tag {
+    position: absolute; bottom: calc(100% - 2px); left: 50%; transform: translateX(-50%);
+    font-size: 11px; font-weight: 600; color: var(--c); white-space: nowrap;
+    text-shadow: 0 1px 2px #0c1424, 0 0 6px #0c1424;
+  }
+  .bus.moving .halo { animation: halo 2.4s ease-out infinite; }
+  @keyframes halo { from { transform: scale(.7); opacity: .6; } to { transform: scale(1.3); opacity: 0; } }
+
+  /* Leaflet 기본 흰 UI → 밤 테마 */
+  .leaflet-container { font-family: var(--sans); background: #0e1320; }
+  .leaflet-bar { border: 1px solid var(--line) !important; box-shadow: none !important; border-radius: 10px !important; overflow: hidden; }
+  .leaflet-bar a { background: rgba(18, 28, 49, .92); color: var(--ink); border-bottom-color: var(--line); }
+  .leaflet-bar a:hover { background: var(--night-3); color: var(--ink); }
+  .leaflet-bar a.leaflet-disabled { background: rgba(18, 28, 49, .92); color: var(--ink-3); }
+  .leaflet-control-attribution { background: rgba(12, 20, 36, .7) !important; color: var(--ink-3) !important; font-size: 10.5px; }
+  .leaflet-control-attribution a { color: var(--ink-2) !important; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--night-2); color: var(--ink); box-shadow: 0 10px 28px rgba(0, 0, 0, .5); }
+  .leaflet-popup-content-wrapper { border-radius: 12px; border: 1px solid var(--line); }
+  .leaflet-popup-content { margin: 14px 16px; font-size: 13px; line-height: 1.5; min-width: 200px; }
+  .leaflet-container a.leaflet-popup-close-button { color: var(--ink-3); top: 6px; right: 6px; }
+  .pop h3 { margin: 0 0 3px; font: 700 15px/1.3 var(--serif); padding-right: 14px; }
+  .pop .meta { color: var(--ink-2); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .pop .acts { display: flex; gap: 6px; margin-top: 12px; }
+  .pop button { flex: 1; border: 1px solid var(--line); background: var(--night-3); border-radius: 8px; padding: 7px 8px; font-size: 12.5px; }
+  .pop button.o:hover { border-color: var(--board); }
+  .pop button.d:hover { border-color: var(--moon); }
+
+  /* ───────── 오른쪽 패널: 카드로 쪼개지 않고 한 장을 구역으로 나눔 ───────── */
+  .rail { background: var(--night-2); overflow-y: auto; min-width: 0; container-type: inline-size; }
+  .rail-in { display: grid; grid-template-columns: 1fr; }
+  .sec { padding: 20px 24px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .sec h2 { margin: 0 0 14px; font: 700 16px/1.3 var(--serif); display: flex; align-items: baseline; gap: 8px; }
+  .sec h2 small { font: 400 12px var(--sans); color: var(--ink-3); }
+  /* 패널이 넓으면(큰 모니터) 두 칸으로 */
+  @container (min-width: 720px) {
+    .rail-in { grid-template-columns: 1fr 1fr; }
+    .rail-in > .sec:nth-child(even):not(.wide) { border-right: 1px solid var(--line); }
+    .rail-in > .wide { grid-column: 1 / -1; }
   }
 
-  /* Multi-Bus Custom Marker */
-  .bus-node {
-    position: relative; width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
+  /* 호출 */
+  .od { display: grid; gap: 8px; }
+  .field { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 10px; }
+  .field > label, .field > span { color: var(--ink-2); font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
+  select {
+    width: 100%; min-width: 0; appearance: none; -webkit-appearance: none;
+    background: var(--night-3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2398a3bd' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center;
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 30px 9px 12px;
+    text-overflow: ellipsis;
   }
-  .bus-ring-wave {
-    position: absolute; width: 46px; height: 46px; border-radius: 50%;
-    opacity: 0.4;
-    animation: wavePulse 1.6s infinite ease-out;
+  select:hover { border-color: var(--ink-3); }
+  select option, select optgroup { background: var(--night-2); color: var(--ink); }
+  .party { display: flex; gap: 6px; }
+  .party button { flex: 1; border: 1px solid var(--line); background: var(--night-3); border-radius: 10px; padding: 8px 0; color: var(--ink-2); }
+  .party button:hover { color: var(--ink); }
+  .party button[aria-pressed="true"] { border-color: var(--ink-2); color: var(--ink); background: rgba(233, 237, 246, .07); }
+  .call {
+    margin-top: 14px; width: 100%; border: 0; border-radius: 12px; padding: 12px;
+    background: var(--moon); color: #241a05; font-weight: 600; font-size: 15px;
+    box-shadow: 0 0 0 0 rgba(242, 196, 109, .4); transition: box-shadow .2s, filter .2s;
   }
-  @keyframes wavePulse {
-    0% { transform: scale(0.6); opacity: 0.8; }
-    100% { transform: scale(1.4); opacity: 0; }
-  }
-  .bus-icon-circle {
-    width: 32px; height: 32px; border-radius: 50%;
-    background: #04211d; border: 2.5px solid #ffffff;
-    font-size: 13px; font-weight: 900;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.6); z-index: 2;
-  }
-  .bus-tag-label {
-    position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
-    font-size: 10.5px; font-weight: 900;
-    padding: 2px 7px; border-radius: 4px; white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  }
+  .call:hover { filter: brightness(1.05); box-shadow: 0 0 0 5px rgba(242, 196, 109, .14); }
+  .call:disabled { opacity: .6; cursor: progress; }
+  .quick { display: flex; gap: 8px; margin-top: 8px; }
+  .quick button { flex: 1; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 9px 8px; color: var(--ink-2); font-size: 13px; }
+  .quick button:hover { color: var(--ink); border-color: var(--ink-3); }
+  .formmsg { min-height: 18px; margin: 10px 0 0; font-size: 12.5px; color: var(--ink-2); }
+  .formmsg.err { color: var(--warn); }
 
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+  /* 배차 판정 */
+  .judge-title { font-size: 13.5px; margin: 0 0 10px; }
+  .judge-title b { font-weight: 600; }
+  .judge-title span { color: var(--ink-3); font-size: 12px; margin-left: 6px; white-space: nowrap; }
+  .cands { display: grid; gap: 6px; }
+  .cand {
+    display: grid; grid-template-columns: 50px 1fr auto; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 10px; background: var(--night-3); border: 1px solid transparent; font-size: 13px;
+  }
+  .cand .who { font-weight: 600; color: var(--c); }
+  .cand .why { color: var(--ink-2); font-size: 12.5px; }
+  .cand .res { font-size: 12.5px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+  .cand.chosen { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, var(--night-3)); }
+  .cand.chosen .why { color: var(--ink); }
+  .cand.chosen .res { color: var(--c); font-weight: 600; }
+  .cand.out { opacity: .65; }
+  .cand.out .why { color: var(--warn); }
+  .judge-note { margin: 10px 0 0; color: var(--ink-3); font-size: 11.5px; }
+  .empty { color: var(--ink-3); font-size: 13px; margin: 0; }
+
+  /* 버스 */
+  .fleet { display: grid; gap: 14px; }
+  .fbus { display: grid; grid-template-columns: 50px 1fr auto; align-items: center; column-gap: 10px; row-gap: 6px; }
+  .fbus .who { font-weight: 600; color: var(--c); }
+  .fbus .where { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fbus .where b { color: var(--ink); font-weight: 500; }
+  .fbus .load { font-size: 12.5px; color: var(--ink-2); }
+  .fbus .load b { color: var(--ink); font-weight: 600; }
+  .bar { grid-column: 2 / 4; display: grid; grid-template-columns: repeat(var(--cap), 1fr); gap: 3px; }
+  .bar i { height: 4px; border-radius: 2px; background: var(--night-3); transition: background .3s; }
+  .bar i.on { background: var(--c); }
+
+  /* 승객 */
+  .pax { list-style: none; margin: 0; padding: 0; }
+  .pax li { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .pax li:first-child { border-top: 0; padding-top: 0; }
+  .pax .nm { font-weight: 500; font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pax .nm em { font-style: normal; color: var(--c); font-weight: 600; margin-left: 6px; font-size: 12.5px; }
+  .pax .rt { color: var(--ink-2); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pax .st { grid-row: 1 / 3; grid-column: 2; align-self: center; font-size: 12.5px; font-weight: 600; text-align: right; }
+  .st.REQUESTED { color: var(--ink-2); }
+  .st.ASSIGNED { color: var(--board); }
+  .st.ONBOARD { color: var(--moon); }
+  .st.COMPLETED { color: var(--ok); font-weight: 500; }
+  .st.REJECTED { color: var(--warn); }
+  .pax li.done { opacity: .55; }
+
+  /* 페르소나 이야기 */
+  details.story summary { cursor: pointer; list-style: none; font: 700 16px/1.3 var(--serif); display: flex; justify-content: space-between; align-items: baseline; }
+  details.story summary::-webkit-details-marker { display: none; }
+  details.story summary::after { content: "펼치기"; font: 400 12px var(--sans); color: var(--ink-3); }
+  details.story[open] summary::after { content: "접기"; }
+  .story-body { max-width: 640px; }
+  .who-card { display: flex; gap: 12px; align-items: flex-start; margin: 16px 0 18px; }
+  .who-card .face { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--night-3); font-size: 20px; }
+  .who-card p { margin: 0; color: var(--ink-2); font-size: 13px; }
+  .who-card p b { color: var(--ink); font-weight: 500; }
+  .trip { margin-bottom: 14px; }
+  .trip-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 6px; }
+  .trip-head span { color: var(--ink-2); }
+  .trip-head b { font-weight: 600; }
+  .bars { display: flex; height: 26px; border-radius: 8px; overflow: hidden; font-size: 11.5px; font-weight: 500; }
+  .bars span { display: grid; place-items: center; white-space: nowrap; overflow: hidden; }
+  .seg-walk { background: #3a4561; color: var(--ink); }
+  .seg-wait { background: #263150; color: var(--ink-2); }
+  .seg-ride { background: var(--moon); color: #241a05; }
+  .story-sum { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+  .story-sum b { color: var(--moon); font-weight: 600; }
+  .note { margin: 10px 0 0; color: var(--ink-3); font-size: 11.5px; }
+
+  /* ───────── 좁은 화면: 지도 위, 패널 아래 ───────── */
+  @media (max-width: 1000px) {
+    .top { flex-wrap: wrap; height: auto; padding: 12px 16px; gap: 10px 14px; }
+    .brand { width: 100%; }
+    .clock { margin-right: auto; }
+    .cast { order: 5; flex-basis: 100%; padding: 8px 0; }
+    .stage { display: block; height: auto; }
+    .map-wrap { width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .sec { padding: 18px 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bus.moving .halo, .cast.flash { animation: none; }
+    .bar i, .stop i, .call { transition: none; }
+  }
 </style>
 </head>
 <body>
-
-<div class="app-container">
-
-  <!-- 1. TOP HEADER -->
-  <header class="top-header">
-    <div class="header-left">
-      <div class="brand-badge">
-        <span>🚌</span> 달무리버스
-      </div>
-      <div class="header-title-box">
-        <h1>
-          중랑구 봉화산 일대 심야 귀갓길 실시간 동적 배차 관제 시스템
-          <span class="fleet-pill" id="fleetStatusPill">3대 대기 중</span>
-        </h1>
-        <p>심야 N버스(N13·N26·N61·N72) 하차 거점 ↔ 신내·묵동·중화·상봉 주거지 연계 서비스</p>
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>달무리버스 관제</h1>
+        <p>중랑구 봉화산 일대, 심야 합승 버스 3대</p>
       </div>
     </div>
 
-    <div class="header-controls">
-      <div class="speed-group" id="speedGroup"></div>
-      <div class="time-chip">
-        <span class="label">운행 시각</span>
-        <span class="val mono" id="clockVal">01:36</span>
-      </div>
-      <button class="btn-reset" id="resetBtn">시뮬레이션 초기화</button>
+    <div class="cast" id="eventBox" aria-live="polite">
+      <small id="eventTime">관제 방송</small>
+      <span id="eventMsg">서버에 연결하는 중…</span>
     </div>
+
+    <div class="clock" title="심야 운행 00:00~05:00 중 지금 위치">
+      <svg viewBox="0 0 46 46" aria-hidden="true">
+        <circle cx="23" cy="23" r="19" fill="none" stroke="#25324e" stroke-width="3" />
+        <circle id="nightArc" cx="23" cy="23" r="19" fill="none" stroke="#f2c46d" stroke-width="3" stroke-linecap="round"
+                stroke-dasharray="119.38" stroke-dashoffset="119.38" transform="rotate(-90 23 23)" />
+        <circle cx="23" cy="23" r="6" fill="#fff6dc" />
+      </svg>
+      <div>
+        <div class="time" id="clockVal">--:--</div>
+        <div class="sub" id="nightLeft">시뮬레이션 시각</div>
+      </div>
+    </div>
+
+    <div class="speed" id="speedGroup" role="group" aria-label="배속"></div>
+    <button class="reset" id="resetBtn" title="서버 시뮬레이션을 01:30으로 되돌리고 호출을 모두 지움">처음부터 다시</button>
   </header>
 
-  <!-- 2. TOP STORY BANNER (IMAGE 100% REPLICATION) -->
-  <section class="story-container">
-    <div class="story-main-title">
-      달무리 버스는 이분을 <span class="blue-glow">안전하고 편리하게 집까지 모십니다</span>
-    </div>
-
-    <div class="story-3col-grid">
-      <!-- Left: Persona Profile -->
-      <div class="persona-box">
-        <div class="persona-avatar-wrap">👩🏻</div>
-        <div class="persona-titles">
-          <h3>23세 여성</h3>
-          <p>중랑구 신내동 거주</p>
-        </div>
-        <div class="persona-box-list">
-          <div>· 01시에 영화관 알바를 마침</div>
-          <div>· N26 심야버스로 상봉역까지 도착</div>
-          <div>· 문제는 정류장에서 집까지</div>
-          <div>· 어두운 이면도로 2.1km</div>
-        </div>
-      </div>
-
-      <!-- Center: Journey Flow Comparison -->
-      <div class="diagram-box">
-        <!-- As-Is -->
-        <div class="diagram-row">
-          <div class="diagram-row-title asis">
-            <span>▲ 현상황</span> - N버스에서 내린 뒤 혼자 걷는다
-          </div>
-          <div class="diagram-bar-container">
-            <div class="bar-seg bus-drop">N버스 하차</div>
-            <div class="bar-seg walk-long">도보 2.1KM - 32분</div>
-            <div class="bar-seg home-reach">귀가</div>
-          </div>
-          <div class="diagram-time-row">
-            <span>01:36 상봉역</span>
-            <span>02:08 집 도착</span>
-          </div>
-          <div style="text-align:center;">
-            <span class="yellow-highlight-tag">도보 시간 32분</span>
-          </div>
-        </div>
-
-        <!-- To-Be -->
-        <div class="diagram-row" style="margin-top: 4px;">
-          <div class="diagram-row-title tobe">
-            <span style="color:#f59e0b;">★ 달무리버스 운행</span> - N버스에서 내려서 달무리버스 탑승
-          </div>
-          <div class="diagram-bar-container">
-            <div class="bar-seg bus-drop">N버스 하차</div>
-            <div class="bar-seg wait-node">정류장 대기 5분</div>
-            <div class="bar-seg dalmuri-node">달무리버스 5분</div>
-            <div class="bar-seg walk-short">도보 2분</div>
-            <div class="bar-seg home-reach">귀가</div>
-          </div>
-          <div class="diagram-time-row">
-            <span>01:36 상봉역</span>
-            <span>01:48 집 도착</span>
-          </div>
-          <div style="text-align:center;">
-            <span class="yellow-highlight-tag">도보 시간 2분 & 20분 일찍 귀가</span>
-          </div>
-        </div>
-
-        <div class="floating-reduction-badge">
-          도보 시간 -30분!
-        </div>
-      </div>
-
-      <!-- Right: Cost Benefit -->
-      <div class="cost-box">
-        <div class="cost-item">
-          <h4><span style="color:#64748b;">▲</span> 택시 이용시</h4>
-          <div class="val">약 7,400원</div>
-          <div class="desc">(심야할증 40%, 2.1km 기준 추정)<br>*서울 택시 요금, 서울시</div>
-        </div>
-
-        <div style="border-top:1px dashed #cbd5e1; margin:4px 0;"></div>
-
-        <div class="cost-item">
-          <h4><span style="color:#f59e0b;">★</span> 달무리버스</h4>
-          <div class="val" style="color:#0284c7; font-size:16px;">시내 버스 요금<br>1,500원</div>
-          <div class="desc">(시범운행 기간동안 무료)</div>
-        </div>
-
-        <div style="margin-top:2px;">
-          <span class="save-highlight-pill">5,900원 절약!</span>
-        </div>
-      </div>
-    </div>
-    <div style="font-size: 11px; color: var(--text-muted); text-align: right;">
-      *중랑구 상봉역.중랑우체국 → 신내동성3차아파트 동선 기준 모식도, 직선거리×1.3 도로 보정, 보행 4km/h, 버스 26km/h, 배차 평균 대기 5분 가정
-    </div>
-  </section>
-
-  <!-- 3. MAIN WORKSPACE (MAP & INTERACTIVE CONTROLS) -->
-  <main class="workspace-grid">
-
-    <!-- Left: Wide Map Box -->
-    <section class="map-panel">
-      <div class="panel-header-simple">
-        <div class="panel-title">중랑구 봉화산 일대 (태릉입구역·상봉역·망우역·신내역) · 3대 실시간 자율 배차 경로</div>
-        <div style="font-size: 12px; color: var(--text-sub);">
-          총 탑승: <b id="totalOnboard" style="color: var(--brand-cyan);" class="mono">0</b> / 18명 · 대기 승객: <b id="totalWaiting" style="color: var(--brand-amber);" class="mono">0</b>명
-        </div>
-      </div>
-
-      <div class="map-box">
-        <div id="map"></div>
-      </div>
-
-      <div class="map-legend-row">
-        <div class="legend-items">
-          <div class="legend-item"><span class="dot" style="background: #3d8bff;"></span> 승차 거점 (N버스 하차 역 앞)</div>
-          <div class="legend-item"><span class="dot" style="background: #f2a93b;"></span> 주거지 정류장 (집 근처 하차)</div>
-          <div class="legend-item"><span class="dot" style="background: var(--brand-cyan);"></span> 1호차 (태릉입구역)</div>
-          <div class="legend-item"><span class="dot" style="background: #ec4899;"></span> 2호차 (망우역)</div>
-          <div class="legend-item"><span class="dot" style="background: var(--brand-purple);"></span> 3호차 (신내역)</div>
-        </div>
-        <div style="color: var(--text-muted); font-size: 11px;">
-          * 중랑구 봉화산 일대 3대 플릿 다중 동적 배차(Multi-Vehicle DRT) 시스템
-        </div>
-      </div>
+  <div class="stage">
+    <section class="map-wrap" id="mapWrap" aria-label="운행 지도">
+      <div id="map"></div>
     </section>
 
-    <!-- Right: Easy Control & Live Updates -->
-    <div class="control-column">
-
-      <!-- One-Click Scenario Panel -->
-      <section class="action-panel">
-        <button class="btn-main-action" id="personaBtn">
-          <span>🚀</span> 신내동 페르소나 귀가 시뮬레이션 시작
-        </button>
-        <button class="btn-sub-action" id="demoBtn">
-          🎲 N버스 거점 → 주거지 승객 3명 동시 호출 (3대 분산 배차)
-        </button>
-
-        <!-- Fleet Realtime Status (3 Buses) -->
-        <div class="fleet-status-card">
-          <div class="fleet-bus-item bus1">
-            <div class="fleet-bus-title" style="color: var(--brand-cyan);">
-              <span>●</span> 1호차
+    <aside class="rail">
+      <div class="rail-in">
+        <section class="sec wide now" aria-label="지금 상황">
+          <div class="stats">
+            <div><b id="statActive">0/3</b><span>운행 중인 버스</span></div>
+            <div><b id="statOnboard">0</b><span>타고 있는 사람</span></div>
+            <div><b id="statWaiting">0</b><span>기다리는 사람</span></div>
+          </div>
+          <div class="legend">
+            <div class="row"><span class="dot board"></span>승차 거점: 심야 N버스에서 내려 타는 곳</div>
+            <div class="row"><span class="dot home"></span>주거지: 집 근처에서 내리는 곳</div>
+            <div class="buses" id="legendBuses"></div>
+          </div>
+        </section>
+        <section class="sec">
+          <h2>호출</h2>
+          <div class="od">
+            <div class="field"><label for="originSel"><span class="dot board"></span>출발</label><select id="originSel"></select></div>
+            <div class="field"><label for="destSel"><span class="dot home"></span>도착</label><select id="destSel"></select></div>
+            <div class="field"><span>인원</span>
+              <div class="party" id="party" role="group" aria-label="탑승 인원">
+                <button type="button" data-n="1" aria-pressed="true">1명</button>
+                <button type="button" data-n="2" aria-pressed="false">2명</button>
+                <button type="button" data-n="3" aria-pressed="false">3명</button>
+              </div>
             </div>
-            <div class="fleet-bus-stat" id="statBus1">대기중 (0/6)</div>
           </div>
-          <div class="fleet-bus-item bus2">
-            <div class="fleet-bus-title" style="color: #ec4899;">
-              <span>●</span> 2호차
+          <button class="call" id="callBtn">호출하기</button>
+          <div class="quick">
+            <button id="personaBtn" title="상봉역.중랑우체국 → 신내동성3차아파트, 1명">페르소나 귀가 호출</button>
+            <button id="demoBtn" title="승차 거점에서 주거지로 가는 호출 3건을 무작위로">무작위 호출 3건</button>
+          </div>
+          <p class="formmsg" id="formMsg" role="status">지도에서 정류장을 눌러도 출발·도착을 고를 수 있어요.</p>
+        </section>
+
+        <section class="sec">
+          <h2>배차 판정 <small>가장 최근 호출</small></h2>
+          <div id="judge"><p class="empty">호출하면 버스마다 기다리는 시간과 이미 탄 승객이 늦어지는 시간을 비교해서 여기에 보여 줘요.</p></div>
+        </section>
+
+        <section class="sec">
+          <h2>버스</h2>
+          <div class="fleet" id="fleet"></div>
+        </section>
+
+        <section class="sec">
+          <h2>승객 <small id="paxCount"></small></h2>
+          <ul class="pax" id="paxList"></ul>
+          <p class="empty" id="paxEmpty">아직 호출이 없어요. 호출하기를 누르면 여기에 승객이 생겨요.</p>
+        </section>
+
+        <section class="sec wide">
+          <details class="story">
+            <summary>페르소나의 귀갓길</summary>
+            <div class="story-body">
+              <div class="who-card">
+                <div class="face" aria-hidden="true">👩🏻</div>
+                <p><b>23세 여성, 중랑구 신내동에 산다.</b> 01시에 알바를 마치고 심야 N26을 타고 상봉역에서 내린다. 정류장에서 집까지는 어두운 이면도로 2.1km.</p>
+              </div>
+
+              <div class="trip">
+                <div class="trip-head"><span>지금은 걸어서</span><b>01:36 → 02:08</b></div>
+                <div class="bars" role="img" aria-label="도보 32분">
+                  <span class="seg-walk" style="flex: 32">도보 2.1km, 32분</span>
+                </div>
+              </div>
+
+              <div class="trip">
+                <div class="trip-head"><span>달무리버스를 타면</span><b>01:36 → 01:48</b></div>
+                <div class="bars" role="img" aria-label="대기 5분, 버스 5분, 도보 2분" style="width: calc(12 / 32 * 100%); min-width: 200px;">
+                  <span class="seg-wait" style="flex: 5">대기 5분</span>
+                  <span class="seg-ride" style="flex: 5">버스 5분</span>
+                  <span class="seg-walk" style="flex: 2">2분</span>
+                </div>
+              </div>
+
+              <p class="story-sum">밤길을 걷는 시간이 <b>30분</b> 줄고 집에 <b>20분 일찍</b> 닿는다. 택시(약 7,400원)보다 <b>5,900원</b> 싸다.</p>
+              <p class="note">상봉역.중랑우체국 → 신내동성3차아파트. 직선거리에 도로 보정 1.3배, 걸음 4km/h, 버스 26km/h, 평균 대기 5분, 요금은 시내버스 1,500원으로 가정. 택시는 심야 할증을 넣은 추정치.</p>
             </div>
-            <div class="fleet-bus-stat" id="statBus2">대기중 (0/6)</div>
-          </div>
-          <div class="fleet-bus-item bus3">
-            <div class="fleet-bus-title" style="color: var(--brand-purple);">
-              <span>●</span> 3호차
-            </div>
-            <div class="fleet-bus-stat" id="statBus3">대기중 (0/6)</div>
-          </div>
-        </div>
+          </details>
+        </section>
+      </div>
+    </aside>
+  </div>
 
-        <!-- Manual Call Form -->
-        <div class="manual-call-box">
-          <label>정류장 직접 선택 호출</label>
-          <div class="form-row">
-            <select id="originSel"></select>
-            <select id="destSel"></select>
-            <button class="btn-call-manual" id="callBtn">호출</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Live Broadcast Status Card -->
-      <section class="live-status-card">
-        <div class="status-broadcast">
-          <div class="status-broadcast-title">
-            <span>●</span> 중랑구 봉화산 일대 3대 통합 배차 관제 방송
-          </div>
-          <div class="status-broadcast-msg" id="liveBroadcastMsg">
-            달무리버스 3대(1·2·3호차)가 태릉입구역·망우역·신내역에서 대기 중입니다.
-          </div>
-        </div>
-
-        <div style="font-size: 12px; font-weight: 700; color: var(--text-title); margin-top: 2px;">
-          호출 승객 현황 (배정 차량 표시)
-        </div>
-        <div class="pax-simple-list" id="paxList">
-          <div style="color: var(--text-muted); font-size: 11.5px; padding: 10px 0; text-align: center;">
-            아직 호출된 승객이 없습니다.
-          </div>
-        </div>
-      </section>
-
-    </div>
-
-  </main>
-
-</div>
-
-<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-/* ================= CONFIG: 중랑구 봉화산 일대 시범 정류장 (서울 열린데이터광장 정류소 위치정보·노선별 정류소 정보) ================= */
-const STOPS = [
-  // server/data/stops.json 과 같은 25개 (승차 거점 6 = isHub, 주거지 19). B5에서 서버 GET /stops 로 바꿀 예정
-  {id:'11105', name:'태릉입구역1번출구', lat:37.6174051, lng:127.0743733, nightRoutes:["N13"], isHub:true},
-  {id:'07104', name:'먹골역.묵동자이아파트', lat:37.613835, lng:127.077086, nightRoutes:["N61"], isHub:true},
-  {id:'07107', name:'지하철7호선중화역', lat:37.6026486, lng:127.0791563, nightRoutes:["N61"], isHub:true},
-  {id:'07003', name:'상봉역.중랑우체국', lat:37.5959591, lng:127.0837436, nightRoutes:["N26"], isHub:true},
-  {id:'07001', name:'망우역', lat:37.5978284, lng:127.0911386, nightRoutes:["N26", "N72"], isHub:true},
-  {id:'07440', name:'신내역4번출구', lat:37.6124792, lng:127.1033382, nightRoutes:["N72"], isHub:true},
-  {id:'07390', name:'신묵초등학교', lat:37.6067399, lng:127.0767983, nightRoutes:[]},
-  {id:'07521', name:'정신교회', lat:37.5996555, lng:127.0816027, nightRoutes:[]},
-  {id:'07410', name:'신내쌍용아파트', lat:37.6015382, lng:127.0874691, nightRoutes:[]},
-  {id:'07275', name:'신내동성3차아파트', lat:37.6076432, lng:127.0952481, nightRoutes:[]},
-  {id:'07288', name:'신내우체국.5단지두산대림아파트', lat:37.6165664, lng:127.0900173, nightRoutes:[]},
-  {id:'07279', name:'신내8단지아파트.서울의료원', lat:37.6131149, lng:127.0961797, nightRoutes:[]},
-  {id:'07164', name:'우림시장', lat:37.595398, lng:127.09954, nightRoutes:[]},
-  {id:'07360', name:'이화미디어고.중랑숲어린이도서관', lat:37.6031194, lng:127.1023247, nightRoutes:[]},
-  {id:'07370', name:'브라운스톤태릉아파트', lat:37.618176, lng:127.0829521, nightRoutes:[]},
-  {id:'07299', name:'새우개마을', lat:37.6182441, lng:127.1033559, nightRoutes:[]},
-  {id:'07407', name:'건영아파트', lat:37.6023453, lng:127.0959547, nightRoutes:[]},
-  {id:'07266', name:'신현중학교', lat:37.6047917, lng:127.0914212, nightRoutes:[]},
-  {id:'07350', name:'먹골파출소.신안아파트입구', lat:37.614559, lng:127.0823393, nightRoutes:[]},
-  {id:'07402', name:'우남푸르미아아파트', lat:37.606985, lng:127.0992198, nightRoutes:[]},
-  {id:'07141', name:'금란교회앞', lat:37.600352, lng:127.104129, nightRoutes:[]},
-  {id:'07397', name:'태릉시장입구', lat:37.5994786, lng:127.0780328, nightRoutes:[]},
-  {id:'07316', name:'중화2동체육공원', lat:37.6003605, lng:127.073873, nightRoutes:[]},
-  {id:'07385', name:'묵2동주민센터', lat:37.6098947, lng:127.0760355, nightRoutes:[]},
-  {id:'07430', name:'태릉고등학교.원묵초등학교', lat:37.6182946, lng:127.0872444, nightRoutes:[]},
-];
-
-/* ================= 3 BUSES CONFIGURATION ================= */
-const BUSES_CONFIG = [
-  { id: 'BUS1', name: '1호차', color: '#00e5cc', tagBg: '#00e5cc', tagColor: '#04211d', initialStop: '11105' }, // 태릉입구역1번출구 (N13)
-  { id: 'BUS2', name: '2호차', color: '#ec4899', tagBg: '#ec4899', tagColor: '#ffffff', initialStop: '07001' }, // 망우역 (N26·N72)
-  { id: 'BUS3', name: '3호차', color: '#a855f7', tagBg: '#a855f7', tagColor: '#ffffff', initialStop: '07440' }  // 신내역4번출구 (N72)
-];
-
-const SPEED_KMH = 26;
-const SPEED_M_PER_MIN = (SPEED_KMH * 1000) / 60;
-const CAPACITY = 6;
-const MAX_WAIT = 15;
-const MAX_DELAY = 5; // 공통 규약 6 (원래 웹은 8분)
-const TICK_MS = 200;
-
-const stopById = id => STOPS.find(s=>s.id===id);
-const stopName = id => stopById(id).name;
-
-function geoDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng/2) * Math.sin(dLng/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function dist(a, b) {
-  const s1 = stopById(a), s2 = stopById(b);
-  return geoDistance(s1.lat, s1.lng, s2.lat, s2.lng);
-}
-
-function travelTime(a, b) {
-  if (a === b) return 0;
-  return dist(a, b) / SPEED_M_PER_MIN;
-}
-
-const lerp = (a, b, t) => a + (b - a) * t;
-const fmtMin = m => (m < 1 && m >= 0) ? '1분 미만' : Math.round(m) + '분';
-const fmtClock = m => {
-  m = Math.round(m);
-  const h = Math.floor(m / 60) % 24, mm = m % 60;
-  return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
-};
-
-/* ================= STATE ================= */
-let state = null;
-function freshState(){
-  return {
-    simTime: 1*60 + 36, // 01:36 Start
-    speedLevel: 4,
-    running: true,
-    buses: BUSES_CONFIG.map(cfg => ({
-      id: cfg.id,
-      name: cfg.name,
-      color: cfg.color,
-      tagBg: cfg.tagBg,
-      tagColor: cfg.tagColor,
-      status: 'idle',
-      atStop: cfg.initialStop,
-      from: null,
-      to: null,
-      segStart: 0,
-      segEnd: 0,
-      onboard: new Set(),
-      waypoints: []
-    })),
-    passengers: {},
-    pending: [],
-    nextPaxId: 1,
-    broadcast: '달무리버스 3대(1·2·3호차)가 태릉입구역·망우역·신내역에서 대기 중입니다.',
-  };
-}
-
-function setBroadcast(msg) {
-  state.broadcast = msg;
-  const el = document.getElementById('liveBroadcastMsg');
-  if(el) el.textContent = msg;
-}
-
-/* ================= LEAFLET MAP ================= */
-let map, busMarkers = {}, stopMarkers = {}, routePolylines = {};
-
-function initLeafletMap() {
-  // 시범지역 가운데 (봉화산 근처)
-  map = L.map('map', {
-    center: [37.60725, 127.08925],
-    zoom: 15,
-    zoomControl: true
-  });
-
-  // CartoDB Voyager High-Contrast Tile
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> & OSM',
-    maxZoom: 19,
-    subdomains: 'abcd'
-  }).addTo(map);
-
-  // Stop Markers
-  STOPS.forEach(s => {
-    const isHub = s.isHub;
-    const iconHtml = `
-      <div class="pin-node">
-        <div class="pin-core ${isHub ? 'hub' : ''}">
-          <div class="pin-center"></div>
-        </div>
-        <div class="pin-wait-count" id="badge-${s.id}" style="display:none;">0</div>
-        <div class="pin-title">${s.name}</div>
-      </div>
-    `;
-    const icon = L.divIcon({
-      className: '',
-      html: iconHtml,
-      iconSize: [44, 44],
-      iconAnchor: [22, 22]
-    });
-
-    const marker = L.marker([s.lat, s.lng], {icon}).addTo(map);
-    marker.bindPopup(`<b>${s.name}</b> <span style="color:#888">${s.id}</span><br>${isHub ? '승차 거점 · 서는 N버스 ' + s.nightRoutes.join(', ') : '주거지 정류장 (집 근처 하차)'}`);
-    stopMarkers[s.id] = marker;
-  });
-
-  // 3 Buses Markers & Routes
-  BUSES_CONFIG.forEach(cfg => {
-    const busHtml = `
-      <div class="bus-node">
-        <div class="bus-ring-wave" style="background:${cfg.color};"></div>
-        <div class="bus-icon-circle" style="border-color:${cfg.color}; color:${cfg.color};">
-          <span id="busCount-${cfg.id}">0</span>
-        </div>
-        <div class="bus-tag-label" style="background:${cfg.tagBg}; color:${cfg.tagColor};">
-          ${cfg.name}
-        </div>
-      </div>
-    `;
-    const busIcon = L.divIcon({
-      className: '',
-      html: busHtml,
-      iconSize: [46, 46],
-      iconAnchor: [23, 23]
-    });
-
-    const initPos = stopById(cfg.initialStop);
-    const bMarker = L.marker([initPos.lat, initPos.lng], {icon: busIcon, zIndexOffset: 1000}).addTo(map);
-    busMarkers[cfg.id] = bMarker;
-
-    const rPoly = L.polyline([], {
-      color: cfg.color,
-      weight: 4.5,
-      opacity: 0.85,
-      dashArray: '8, 8'
-    }).addTo(map);
-    routePolylines[cfg.id] = rPoly;
-  });
-}
-
-/* ================= MULTI-VEHICLE ROUTE EVALUATION ================= */
-function evaluateBusRoute(bus, waypoints, baseLoc, baseTime){
-  let loc = baseLoc, t = baseTime;
-  const onboard = new Set(bus.onboard);
-  const pickupTimes = {}, dropoffTimes = {};
-  let feasible = true;
-  for(const wp of waypoints){
-    t += travelTime(loc, wp.stopId);
-    loc = wp.stopId;
-    wp.dropoffs.forEach(id => { dropoffTimes[id] = t; onboard.delete(id); });
-    wp.pickups.forEach(id => { pickupTimes[id] = t; onboard.add(id); });
-    if(onboard.size > CAPACITY) feasible = false;
-  }
-  return { feasible, pickupTimes, dropoffTimes, endTime: t };
-}
-
-function buildCandidate(original, p, d, pax){
-  const arr = original.map(wp => ({stopId: wp.stopId, pickups: [...wp.pickups], dropoffs: [...wp.dropoffs]}));
-  arr.splice(p, 0, {stopId: pax.origin, pickups: [pax.id], dropoffs: []});
-  arr.splice(d+1, 0, {stopId: pax.dest, pickups: [], dropoffs: [pax.id]});
-  return arr;
-}
-
-// Search across ALL 3 BUSES for the globally optimal assignment
-function attemptInsertGlobal(pax){
-  let globalBest = null;
-
-  for(const bus of state.buses){
-    const original = bus.waypoints;
-    const baseLoc = bus.status === 'moving' ? bus.from : bus.atStop;
-    const baseTime = bus.status === 'moving' ? bus.segStart : state.simTime;
-    const minP = bus.status === 'moving' ? 1 : 0;
-
-    for(let p = minP; p <= original.length; p++){
-      for(let d = p; d <= original.length; d++){
-        const candidate = buildCandidate(original, p, d, pax);
-        const res = evaluateBusRoute(bus, candidate, baseLoc, baseTime);
-        if(!res.feasible) continue;
-        if(res.pickupTimes[pax.id] - pax.requestTime > MAX_WAIT + 1e-9) continue;
-
-        let delayOk = true;
-        for(const id in res.pickupTimes){
-          if(id === pax.id) continue;
-          const p2 = state.passengers[id];
-          if(p2 && p2.promisedPickup != null && res.pickupTimes[id] - p2.promisedPickup > MAX_DELAY + 1e-9){ delayOk = false; break; }
-        }
-        if(delayOk){
-          for(const id in res.dropoffTimes){
-            const p2 = state.passengers[id];
-            if(p2 && p2.promisedDropoff != null && res.dropoffTimes[id] - p2.promisedDropoff > MAX_DELAY + 1e-9){ delayOk = false; break; }
-          }
-        }
-        if(!delayOk) continue;
-
-        if(!globalBest || res.dropoffTimes[pax.id] < globalBest.res.dropoffTimes[pax.id]){
-          globalBest = { busId: bus.id, candidate, res };
-        }
-      }
-    }
-  }
-  return globalBest;
-}
-
-function commitInsert(pax, best){
-  const targetBus = state.buses.find(b => b.id === best.busId);
-  targetBus.waypoints = best.candidate;
-  pax.assignedBus = targetBus.name;
-  pax.assignedBusId = targetBus.id;
-  pax.assignedBusColor = targetBus.color;
-
-  for(const id in best.res.pickupTimes){
-    if(state.passengers[id]) state.passengers[id].promisedPickup = best.res.pickupTimes[id];
-  }
-  for(const id in best.res.dropoffTimes){
-    if(state.passengers[id]) state.passengers[id].promisedDropoff = best.res.dropoffTimes[id];
-  }
-  pax.status = 'waiting';
-  const wait = pax.promisedPickup - pax.requestTime;
-  setBroadcast(`[배차 확정] 🚍 ${targetBus.name} 배정 ➔ ${pax.label}: ${stopName(pax.origin)} 승차 (약 ${fmtMin(wait)} 후) ➔ ${stopName(pax.dest)}`);
-}
-
-function requestRide(originId, destId, customLabel){
-  if(originId === destId) return;
-  const paxId = 'P' + (state.nextPaxId++);
-  const pax = {
-    id: paxId,
-    label: customLabel || `승객${state.nextPaxId-1}`,
-    origin: originId, dest: destId,
-    requestTime: state.simTime,
-    status: 'requested',
-    promisedPickup: null, promisedDropoff: null,
-    assignedBus: null,
-    assignedBusId: null
-  };
-  state.passengers[pax.id] = pax;
-
-  const best = attemptInsertGlobal(pax);
-  if(best){
-    commitInsert(pax, best);
-  } else {
-    pax.status = 'pending';
-    state.pending.push(pax.id);
-    setBroadcast(`[배차 대기] ${pax.label}님의 호출이 접수되었습니다. 여석 확보 시 최적 차량에 배차됩니다.`);
-  }
-}
-
-function retryPending(){
-  const still = [];
-  for(const id of state.pending){
-    const pax = state.passengers[id];
-    if(!pax || pax.status !== 'pending') continue;
-    if(state.simTime - pax.requestTime > MAX_WAIT){
-      pax.status = 'missed';
-      continue;
-    }
-    const best = attemptInsertGlobal(pax);
-    if(best){ commitInsert(pax, best); }
-    else still.push(id);
-  }
-  state.pending = still;
-}
-
-/* ================= SIMULATION TICK (ALL 3 BUSES) ================= */
-function startBusNextSegment(bus){
-  const wp = bus.waypoints[0];
-  const tt = travelTime(bus.atStop, wp.stopId);
-  if(tt <= 1e-9){ arriveBusAtStop(bus); return; }
-  bus.from = bus.atStop; bus.to = wp.stopId;
-  bus.segStart = state.simTime; bus.segEnd = state.simTime + tt;
-  bus.status = 'moving';
-}
-
-function arriveBusAtStop(bus){
-  const wp = bus.waypoints.shift();
-  bus.atStop = wp.stopId;
-  bus.status = 'idle';
-  bus.from = null; bus.to = null;
-
-  wp.dropoffs.forEach(id => {
-    bus.onboard.delete(id);
-    const pax = state.passengers[id];
-    if(pax){ pax.status = 'dropped'; pax.droppedAt = state.simTime; }
-    setBroadcast(`🎉 [안전 도착] ${pax ? pax.label : '승객'}님이 ${bus.name}에서 ${stopName(wp.stopId)}에 하차했습니다.`);
-  });
-  wp.pickups.forEach(id => {
-    bus.onboard.add(id);
-    const pax = state.passengers[id];
-    if(pax) pax.status = 'onboard';
-    setBroadcast(`🚍 [승차 완료] ${pax ? pax.label : '승객'}님이 ${stopName(wp.stopId)}에서 ${bus.name}에 탑승했습니다.`);
-  });
-  retryPending();
-}
-
-function tick(dtMin){
-  state.simTime += dtMin;
-
-  state.buses.forEach(bus => {
-    if(bus.status === 'idle'){
-      if(bus.waypoints.length > 0) startBusNextSegment(bus);
-    }
-    if(bus.status === 'moving'){
-      if(state.simTime >= bus.segEnd) arriveBusAtStop(bus);
-    }
-  });
-
-  for(const id in state.passengers){
-    const p = state.passengers[id];
-    if(p.status === 'dropped' && state.simTime - p.droppedAt > 8) delete state.passengers[id];
-    if(p.status === 'missed' && state.simTime - p.requestTime > 15) delete state.passengers[id];
-  }
-}
-
-/* ================= RENDER ================= */
-function currentBusGeo(bus){
-  if(bus.status === 'moving'){
-    const f = stopById(bus.from), t = stopById(bus.to);
-    const frac = Math.min(1, Math.max(0, (state.simTime - bus.segStart) / (bus.segEnd - bus.segStart)));
-    return { lat: lerp(f.lat, t.lat, frac), lng: lerp(f.lng, t.lng, frac) };
-  }
-  const s = stopById(bus.atStop);
-  return { lat: s.lat, lng: s.lng };
-}
-
-function renderMap(){
-  const waitingByStop = {};
-  let totalWaitingCount = 0;
-  for(const id in state.passengers){
-    const p = state.passengers[id];
-    if(p.status === 'requested' || p.status === 'waiting' || p.status === 'pending'){
-      waitingByStop[p.origin] = (waitingByStop[p.origin] || 0) + 1;
-      totalWaitingCount++;
-    }
-  }
-
-  STOPS.forEach(s => {
-    const badgeEl = document.getElementById(`badge-${s.id}`);
-    if(badgeEl){
-      if(waitingByStop[s.id]){
-        badgeEl.textContent = waitingByStop[s.id];
-        badgeEl.style.display = 'flex';
-      } else {
-        badgeEl.style.display = 'none';
-      }
-    }
-  });
-
-  let totalOnboardCount = 0;
-  let activeBusCount = 0;
-
-  state.buses.forEach(bus => {
-    totalOnboardCount += bus.onboard.size;
-    
-    const isOperating = bus.status === 'moving' || bus.onboard.size > 0 || bus.waypoints.length > 0;
-    if (isOperating) {
-      activeBusCount++;
-    }
-
-    const bPos = currentBusGeo(bus);
-    const bMarker = busMarkers[bus.id];
-    if(bMarker){
-      bMarker.setLatLng([bPos.lat, bPos.lng]);
-      const countEl = document.getElementById(`busCount-${bus.id}`);
-      if(countEl) countEl.textContent = bus.onboard.size;
-    }
-
-    const routeLatLngs = [[bPos.lat, bPos.lng]];
-    bus.waypoints.forEach(wp => {
-      const s = stopById(wp.stopId);
-      routeLatLngs.push([s.lat, s.lng]);
-    });
-    if(routePolylines[bus.id]) routePolylines[bus.id].setLatLngs(routeLatLngs);
-
-    const statEl = document.getElementById(`stat${bus.id.replace('BUS', 'Bus')}`);
-    if(statEl){
-      const statusText = bus.status === 'moving' ? `${stopName(bus.to)}행` : '대기중';
-      statEl.textContent = `${statusText} (${bus.onboard.size}/6)`;
-    }
-  });
-
-  const fleetPillEl = document.getElementById('fleetStatusPill');
-  if (fleetPillEl) {
-    fleetPillEl.className = 'fleet-pill';
-    if (activeBusCount === 0) {
-      fleetPillEl.textContent = '3대 대기 중';
-    } else if (activeBusCount === 1) {
-      fleetPillEl.textContent = '1대 운행 중 (2대 대기)';
-      fleetPillEl.classList.add('active-1');
-    } else if (activeBusCount === 2) {
-      fleetPillEl.textContent = '2대 운행 중 (1대 대기)';
-      fleetPillEl.classList.add('active-2');
-    } else if (activeBusCount === 3) {
-      fleetPillEl.textContent = '3대 동시 운행 중';
-      fleetPillEl.classList.add('active-3');
-    }
-  }
-
-  document.getElementById('totalOnboard').textContent = totalOnboardCount;
-  document.getElementById('totalWaiting').textContent = totalWaitingCount;
-}
-
-const STATE_LABEL = {requested:'접수 중', waiting:'승차 대기', pending:'배차 대기', onboard:'탑승 중', dropped:'하차 완료', missed:'취소됨'};
-
-function renderPaxList(){
-  const list = document.getElementById('paxList');
-  const items = Object.values(state.passengers).sort((a,b) => a.requestTime - b.requestTime);
-  if(items.length === 0){
-    list.innerHTML = '<div style="color: var(--text-muted); font-size: 11.5px; padding: 10px 0; text-align: center;">현재 대기 중인 승객이 없습니다.</div>';
-    return;
-  }
-  list.innerHTML = '';
-  items.forEach(p => {
-    const div = document.createElement('div');
-    div.className = 'pax-simple-item';
-    let statusText = STATE_LABEL[p.status] || p.status;
-    if(p.status === 'waiting') statusText = `${fmtMin(p.promisedPickup - state.simTime)} 후 탑승`;
-    if(p.status === 'onboard') statusText = `${fmtMin(p.promisedDropoff - state.simTime)} 후 하차`;
-
-    const busBadge = p.assignedBus 
-      ? `<span class="bus-tag" style="background:${p.assignedBusColor||'#38bdf8'}; color:#04211d;">${p.assignedBus}</span>` 
-      : '';
-
-    div.innerHTML = `
-      <div style="min-width: 0; flex: 1;">
-        <div class="name">${p.label} ${busBadge}</div>
-        <div class="route">${stopName(p.origin)} ➔ ${stopName(p.dest)}</div>
-      </div>
-      <div class="state-tag ${p.status}">${statusText}</div>
-    `;
-    list.appendChild(div);
-  });
-}
-
-function render(){
-  document.getElementById('clockVal').textContent = fmtClock(state.simTime);
-  renderMap();
-  renderPaxList();
-}
-
-/* ================= UI SETUP ================= */
-function populateSelects(){
-  const o = document.getElementById('originSel');
-  const d = document.getElementById('destSel');
-  o.innerHTML = ''; d.innerHTML = '';
-  STOPS.forEach(s => {
-    o.appendChild(new Option(s.name, s.id));
-    d.appendChild(new Option(s.name, s.id));
-  });
-  o.value = '07003'; // 기본 출발: 상봉역.중랑우체국 (페르소나 N26 하차)
-  d.value = '07275'; // 기본 도착: 신내동성3차아파트 (페르소나 집 근처)
-}
-
-function setupSpeedButtons(){
-  const wrap = document.getElementById('speedGroup');
-  wrap.innerHTML = '';
-  [ [1,'1x'], [4,'4x'], [10,'10x'] ].forEach(([lvl, label]) => {
-    const b = document.createElement('button');
-    b.textContent = label;
-    if(lvl === state.speedLevel) b.classList.add('active');
-    b.onclick = () => { state.speedLevel = lvl; setupSpeedButtons(); };
-    wrap.appendChild(b);
-  });
-}
-
-function init(){
-  state = freshState();
-  populateSelects();
-  setupSpeedButtons();
-  setBroadcast('달무리버스 3대(1·2·3호차)가 승차 거점(태릉입구역·망우역·신내역)에서 대기 중입니다.');
-  render();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  initLeafletMap();
-  init();
-
-  document.getElementById('callBtn').onclick = () => {
-    const o = document.getElementById('originSel').value;
-    const d = document.getElementById('destSel').value;
-    requestRide(o, d);
-    render();
-  };
-
-  // Big One-Click Persona Button (Exact Match with Image)
-  document.getElementById('personaBtn').onclick = () => {
-    requestRide('07003', '07275', '23세 여성 (신내동 2.1km)');
-    render();
-  };
-
-  // 승차 거점(N버스 하차) → 주거지로 가는 승객 3명을 무작위로 호출
-  document.getElementById('demoBtn').onclick = () => {
-    const hubs = STOPS.filter(s => s.isHub).map(s => s.id);
-    const homes = STOPS.filter(s => !s.isHub).map(s => s.id);
-    for(let i = 0; i < 3; i++){
-      const o = hubs[Math.floor(Math.random() * hubs.length)];
-      const d = homes[Math.floor(Math.random() * homes.length)];
-      requestRide(o, d);
-    }
-    render();
-  };
-
-  document.getElementById('resetBtn').onclick = () => { init(); };
-
-  setInterval(() => {
-    if(!state) return;
-    const dtMin = state.speedLevel * (TICK_MS/1000) / 6;
-    tick(dtMin);
-    render();
-  }, TICK_MS);
-});
-</script>
+<!-- 관제 로직: 서버 API를 받아서 그리기만 함 (B5) -->
+<script src="control.js"></script>
 </body>
 </html>
