@@ -18,6 +18,7 @@ npm start            # 서버 켜기. 끄려면 Ctrl+C
 ```
 달무리버스 서버: http://localhost:3000/  (에뮬레이터: http://10.0.2.2:3000)
 시뮬 시각 01:30부터 6배속, 버스 3대, 정류장 25개
+도로 경로: 정류장 600쌍 모두 도로를 따라 이동 (data/paths.json)
 ```
 
 | 어디서 | 주소 |
@@ -27,7 +28,7 @@ npm start            # 서버 켜기. 끄려면 Ctrl+C
 | 같은 와이파이의 실제 폰 | `http://<노트북 IP>:3000/` (PowerShell `ipconfig`의 IPv4 주소, 방화벽에서 Node 허용 필요) |
 | 살아 있는지 확인 | http://localhost:3000/health → `simClock`이 계속 오르면 정상 |
 
-데이터(정류장·지도)는 레포에 커밋돼 있어서 **수집 없이 바로 켜진다.** 서버는 켤 때마다 `data/stops.json`, `data/map.json`으로 SQLite DB(`data/dalmuri.db`, 커밋 안 함)를 새로 만들고, 버스·호출 상태는 메모리에 둔다. **서버를 껐다 켜면 호출과 버스 위치는 처음(01:30)으로 돌아간다.**
+데이터(정류장·지도·도로 경로)는 레포에 커밋돼 있어서 **수집 없이 바로 켜진다.** 서버는 켤 때마다 `data/stops.json`, `data/map.json`으로 SQLite DB(`data/dalmuri.db`, 커밋 안 함)를 새로 만들고, 버스·호출 상태는 메모리에 둔다. **서버를 껐다 켜면 호출과 버스 위치는 처음(01:30)으로 돌아간다.**
 
 ### 시연용 설정 바꾸기
 
@@ -64,18 +65,23 @@ $env:PORT=3001;    npm start      # 3000번이 이미 쓰이고 있을 때
 // → 200
 { "callId": "c-1", "status": "ASSIGNED", "busId": "BUS2" }
 
-// GET /calls/c-1   (30초 뒤 같은 상봉역에서 같은 방향 c-2가 호출해 합승, 2호차가 오는 중)
+// GET /calls/c-1   (바로 이어서 같은 상봉역에서 같은 방향 c-2가 호출해 합승, 망우역의 2호차가 막 출발)
 {
   "callId": "c-1", "status": "ASSIGNED", "partySize": 1,
   "originId": "07003", "destId": "07275",
-  "simClock": "01:30", "etaPickupMin": 1.6, "etaDropoffMin": 6.5,
-  "bus": { "busId": "BUS2", "lat": 37.5973728, "lng": 127.0893364, "load": 0, "capacity": 6 },
+  "simClock": "01:30", "etaPickupMin": 1.6, "etaDropoffMin": 7.4,
+  "bus": { "busId": "BUS2", "lat": 37.5978284, "lng": 127.0911386, "load": 0, "capacity": 6 },
   "route": [
     { "stopId": "07003", "lat": 37.5959591, "lng": 127.0837436, "pickups": ["c-1"], "dropoffs": [] },
     { "stopId": "07003", "lat": 37.5959591, "lng": 127.0837436, "pickups": ["c-2"], "dropoffs": [] },
     { "stopId": "07275", "lat": 37.6076432, "lng": 127.0952481, "pickups": [], "dropoffs": ["c-1"] }
   ],
-  "path": []
+  "path": [
+    { "lat": 37.597828, "lng": 127.091139 },   // 첫 점 = 버스 지금 위치 (망우역)
+    { "lat": 37.597864, "lng": 127.091125 },
+    ...                                          // 도로를 따라 모두 32개
+    { "lat": 37.607643, "lng": 127.095248 }     // 끝 점 = 내 하차 정류장
+  ]
 }
 ```
 
@@ -83,7 +89,7 @@ $env:PORT=3001;    npm start      # 3000번이 이미 쓰이고 있을 때
 
 - **상태 흐름:** `REQUESTED`(빈 버스 찾는 중, `busId` null) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 15분 안에 못 잡으면 `REJECTED`. `COMPLETED`·`REJECTED`가 오면 조회를 멈추면 된다 (끝난 호출도 서버에 남아 있어서 404가 나지 않는다).
 - **`route`는 그 승객이 내리는 정류장까지만** 온다. 사이에 다른 `callId`가 있으면 합승이다. 같은 정류장이 연달아 나올 수 있다(같은 곳에서 여러 명 승차).
-- **`path`는 지금 `[]`** 다 → 버스 위치와 `route` 정류장들을 직선으로 이으면 된다. B6(도로 경로)이 끝나면 도로 좌표가 채워지고, 그때는 그대로 그리면 된다 (API 모양은 안 바뀜).
+- **`path` = 버스 지금 위치부터 내 하차 정류장까지의 도로 좌표** (B6). 그대로 이어 그리면 버스가 봉화산을 가로지르지 않고 도로를 따라간다. `REQUESTED`·`COMPLETED`·`REJECTED`일 때는 `[]`. 앱은 `path`가 비어 있으면 `route`를 직선으로 잇는 코드도 그대로 두면 된다 (서버에 `paths.json`이 없을 때 대비).
 - `etaPickupMin`은 `ONBOARD`부터 `null`, `etaDropoffMin`은 `ASSIGNED`·`ONBOARD`일 때만 있다.
 - 버스 위치는 시뮬레이션 값이다. 2초마다 받은 위치 사이를 부드럽게 옮기면 실시간처럼 보인다 (공통 규약 6).
 
@@ -112,11 +118,11 @@ Invoke-RestMethod http://localhost:3000/buses | ConvertTo-Json -Depth 5
 
 - **제약 (하나라도 어기면 그 후보는 제외)**
   - 정원: 어느 구간에서도 탑승 **인원 합** ≤ 6명 (한 호출이 1~3명)
-  - 새 승객: 호출 후 **15분 안에** 탑승
+  - 대기: 새 승객도, 아직 안 탄 기존 승객도 호출 후 **15분 안에** 탑승
   - 기존 승객: **처음 안내받은** 탑승·하차 시각보다 **5분 넘게 늦어지지 않음**
 - **비용** = 새 승객의 하차 시각 + 기존 승객들이 늦어지는 시간의 합 (= 모든 승객 하차 시각 합이 늘어나는 양, 제안서 ΔC)
 - 지금 못 잡으면 대기열에 두고 매초 다시 시도, 15분이 지나면 `REJECTED`
-- 버스는 정류장 사이를 일정 속도(26km/h)로 이동하고, 정류장에 닿으면 하차 → 승차 순서로 처리
+- 버스는 정류장 사이를 **OSM 도로 최단 경로**로 일정 속도(26km/h) 이동하고, 정류장에 닿으면 하차 → 승차 순서로 처리. 도로 경로는 지도를 그린 같은 OSM 데이터로 미리 계산해 둔다 (`DESIGN.md` 6절)
 
 **예 (`npm run test:engine`의 시연 시나리오)**
 
@@ -124,7 +130,7 @@ Invoke-RestMethod http://localhost:3000/buses | ConvertTo-Json -Depth 5
 2. 같은 상봉역에서 같은 방향(신내8단지) 2명 호출 → 2호차 노선에 끼우는 비용이 가장 작음 → **합승**, 노선에 경유 정류장이 하나 늘어남
 3. 2호차가 신내 쪽으로 떠난 뒤 상봉역에서 반대 방향(태릉고) 호출 → 2호차는 다 내려 주고 돌아와야 해서 대기 12분 → **3호차** 배정
 
-무작위 호출 80건 시험에서 최대 대기 14.8분(한도 15), 기존 승객 최대 지연 4.7분(한도 5), 최대 탑승 6명(정원 6), 승객 절반 이상이 합승했다.
+무작위 호출 80건 시험에서 최대 대기 14.7분(한도 15), 기존 승객 최대 지연 5.0분(한도 5), 최대 탑승 6명(정원 6), 승객의 59%가 합승했다. 같은 시험에서 봉화산 정상 부근 470m 안으로 지나가는 경로가 없고, 버스 위치가 늘 도로 경로 위(오차 0.01m)에 있는지도 확인한다.
 
 ## 4. 파일
 
@@ -137,7 +143,8 @@ server/
 ├─ config.js       설정값 (공통 규약 6)
 ├─ DESIGN.md       설계, 웹 시뮬레이터와 다르게 한 점
 ├─ scripts/
-│  ├─ collect.js       데이터 수집: 정류장 + 지도 (npm run collect)
+│  ├─ collect.js       데이터 수집: 정류장 + 지도 + 도로 경로 (npm run collect)
+│  ├─ paths.js         도로 경로만 다시 (npm run paths) ← lib/roads.js
 │  ├─ test-engine.js   배차 엔진 테스트 (npm run test:engine)
 │  └─ test-api.js      API 테스트, 서버 켜 둔 채로 (npm run test:api)
 └─ data/
@@ -146,6 +153,7 @@ server/
    ├─ stops-all.json    범위 안 전체 정류장 225개 + 서는 N버스 (참고용)
    ├─ map.json, map.png GET /map, /map/image
    ├─ map-check.png     지도 위 정류장 확인용 그림
+   ├─ paths.json        정류장 600쌍의 도로 거리·좌표 (엔진이 씀)
    └─ raw/              원본 (열린데이터광장 정류소·노선 파일, OSM 데이터)
 ```
 
@@ -154,13 +162,15 @@ server/
 | `npm start` | 서버 켜기 |
 | `npm run test:engine` | 배차 엔진 테스트 (서버 안 켜도 됨) |
 | `npm run test:api` | API 테스트 (다른 창에서 서버를 켜 둔 채) |
-| `npm run collect` | 정류장·지도 다시 만들기 (`area.json`을 바꿨을 때만) |
+| `npm run collect` | 정류장·지도·도로 경로 다시 만들기 (`area.json`을 바꿨을 때만) |
+| `npm run paths` | 도로 경로만 다시 만들기 (1초, 인터넷·sharp 필요 없음) |
 
 ## 5. 안 될 때
 
 | 증상 | 확인 |
 | --- | --- |
 | `내장 SQLite가 없음` | `node -v`가 22.13보다 낮음 → Node 24 LTS 설치 |
+| 켤 때 `⚠ 도로 경로: …직선×1.3으로 대신함` | `data/paths.json`이 없거나 정류장이 바뀜 → `npm run paths` |
 | `EADDRINUSE` | 서버가 이미 켜져 있음 → 그 창에서 Ctrl+C, 또는 `$env:PORT=3001` |
 | 에뮬레이터에서 접속 안 됨 | 주소가 `http://10.0.2.2:3000`인지, 앱 Manifest에 평문(http) 통신 허용이 있는지, 노트북에서 http://localhost:3000/health 가 열리는지 |
 | 실제 폰에서 접속 안 됨 | 같은 와이파이인지, 주소가 노트북 IPv4인지, Windows 방화벽에서 Node.js 허용 |

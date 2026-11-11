@@ -1,4 +1,4 @@
-# 서버 설계 — 배차·시뮬레이션 (B0 분석 → B2·B3·B4 구현 기준)
+# 서버 설계 — 배차·시뮬레이션 (B0 분석 → B2~B6 구현 기준)
 
 > `web/index.html`(친구 웹 시뮬레이터, 관악구 신림 기준)을 읽고, 우리 서버에서 **그대로 쓸 것**과 **바꿀 것**을 정리했다.
 > 웹은 참고용이고 서버는 새로 작성한다 (공통 규약 1). 값은 공통 규약 6을 따른다.
@@ -24,7 +24,6 @@
 - 경유지 구조 `{ stopId, pickups, dropoffs }`, 같은 정류장에서는 **하차 먼저, 승차 나중**
 - 이동 중인 버스는 지금 가는 경유지 앞에 끼워 넣지 않음. 평가는 구간 출발 정류장·출발 시각 기준
 - 대기열과 재시도, 최대 대기 15분 넘으면 실패
-- 버스 위치 = 구간 사이 직선 보간 (B6 도로 좌표 전까지)
 - 상수: 버스 3대, 속도 26km/h, 정원 6명, 최대 대기 15분
 
 ## 3. 바꿀 것 (발표 때 "웹과 다르게 한 점"으로 설명)
@@ -33,13 +32,13 @@
 | --- | --- | --- | --- |
 | 1 | 정원 = 탑승 **호출 수** (`onboard.size`) | 정원 = 탑승 **인원 합** (`partySize` 합) | 호출 한 번에 1~3명 (공통 규약 `load`) |
 | 2 | 기존 승객 최대 지연 8분 | **5분** | 제안서 기준 (공통 규약 6) |
-| 3 | 지연을 **직전 약속 시각** 기준으로 비교, 끼울 때마다 약속을 새로 적음 → 여러 번 끼우면 처음보다 5분 넘게 늦어질 수 있음 | 지연은 **처음 배정됐을 때 약속한 시각** 기준. 화면에 보여 주는 ETA만 새로 계산 | "기존 승객은 최대 5분까지만 늦어진다"는 약속을 실제로 지키기 위해 |
+| 3 | 지연을 **직전 약속 시각** 기준으로 비교, 끼울 때마다 약속을 새로 적음 → 여러 번 끼우면 처음보다 5분 넘게 늦어질 수 있음 | 지연은 **처음 배정됐을 때 약속한 시각** 기준. 화면에 보여 주는 ETA만 새로 계산. 아직 안 탄 기존 승객은 지연 5분 안이어도 **호출부터 15분 안**에 타야 함 | "기존 승객은 최대 5분까지만 늦어진다", "15분 안에 탄다"는 약속을 둘 다 실제로 지키기 위해 (14분 약속 + 5분 지연 = 19분 대기를 막음) |
 | 4 | 고르는 기준 = 새 승객 하차 시각만 | 비용 = 새 승객 하차 시각 + **기존 승객들이 늦어지는 시간 합** | 새 승객만 빨라지고 다른 승객이 손해 보는 배정을 피함 ("합승 최적") |
 | 5 | 대기열 재시도는 버스가 정류장에 설 때만 | **매 tick** 재시도 (가벼움) | 빈 버스가 생기는 순간 바로 배정 |
 | 6 | 끝난 승객은 8분 뒤 삭제 | 지우지 않고 보관 (`COMPLETED`·`REJECTED`) | 앱이 2초마다 조회하다 404가 나지 않게 (B3) |
 | 7 | 정류장 8개 하드코딩 (관악구) | `stops.json`(25개, HUB/HOME)에서 읽음 | 시범지역 변경 |
 | 8 | 브라우저에서 200ms마다 tick, 기본 약 40배속 | 서버에서 1초마다 tick, 기본 6배속(설정값) | 공통 규약 6, 앱 2초 조회와 맞춤 |
-| 9 | 직선 거리 그대로 | 직선 거리 × **도로 보정 1.3** (설정값, B6에서 도로 좌표가 생기면 실제 거리) | 직선은 실제 도로보다 짧아 ETA가 너무 낙관적임 |
+| 9 | 직선 거리, 직선 이동 | **OSM 도로 최단 경로**의 거리와 좌표 (B6, 아래 6절). `paths.json`이 없을 때만 직선 × 1.3 | 직선은 봉화산을 가로지르고 ETA가 너무 낙관적임 |
 | 10 | 웹이 배차·이동을 직접 계산 | 웹은 `GET /buses`로 받아서 그리기만 (B5) | 배차는 서버 한 곳에서만 (교수님) |
 | 11 | 지도 = CARTO 타일 실시간 | 지도 = 우리 `map.png`를 Leaflet `imageOverlay`로 (B5) | 앱과 같은 그림·같은 좌표, 외부 타일 의존 없음 |
 
@@ -49,9 +48,10 @@
 server/
 ├─ index.js        Express: API(B4), express.static('../web'), 1초 tick 시작
 ├─ engine.js       상태 + 배차 + 이동 (화면·HTTP와 무관, 테스트하기 쉽게)
-├─ db.js           SQLite: 시작할 때 stops.json·map.json → stops·map_info 테이블 (없으면 만듦)
+├─ db.js           SQLite: 시작할 때 stops.json·map.json → stops·map_info 테이블, paths.json 읽기
 ├─ config.js       상수 (버스 대수, 정원, 속도, 대기·지연 한도, 배속, 도로 보정, tick 간격)
-└─ scripts/test-engine.js   호출 몇 개 넣고 배정·노선 출력 (B2 완료 기준)
+├─ scripts/paths.js         도로 경로 만들기 (B6, npm run paths) ← scripts/lib/roads.js
+└─ scripts/test-engine.js   도로 경로·시연 시나리오·무작위 호출 제약 검사
 ```
 
 **engine.js 상태 (서버 메모리)**
@@ -59,7 +59,7 @@ server/
 ```js
 state = {
   simTime,            // 시뮬 분 (01:30 = 90에서 시작)
-  buses: [{ busId, atStop, status: 'idle'|'moving', from, to, segStart, segEnd, onboard: Set<callId>, waypoints: [{ stopId, pickups, dropoffs }] }],
+  buses: [{ busId, atStop, status: 'idle'|'moving', from, to, segStart, segEnd,   // 구간 from→to의 도로 모양은 paths.json onboard: Set<callId>, waypoints: [{ stopId, pickups, dropoffs }] }],
   calls: Map<callId, { callId, originId, destId, partySize, requestTime, status, busId,
                        firstPickup, firstDropoff,   // 처음 약속 (지연 제약 기준, 바꾸지 않음)
                        etaPickup, etaDropoff,       // 지금 예상 (매 배정마다 갱신, 화면용)
@@ -73,12 +73,13 @@ state = {
 
 | 함수 | 웹의 대응 | 하는 일 |
 | --- | --- | --- |
-| `travelMin(a, b)` | `travelTime` | 직선 거리 × 도로 보정 ÷ 속도 |
+| `travelMin(a, b)` | `travelTime` | 도로 거리 ÷ 속도 (없으면 직선 × 1.3) |
 | `evaluate(bus, waypoints)` | `evaluateBusRoute` | 예정 시각들 + 인원 합 정원 검사 |
 | `findBestInsertion(call)` | `attemptInsertGlobal` | 바꿀 것 1·3·4 반영 |
 | `requestCall({ originId, destId, partySize })` | `requestRide` | 검증(400) → 배정 또는 대기열 → `CallResponse` |
 | `tick(dtMin)` | `tick` + `retryPending` | 시계 진행, 버스 이동·도착 처리, 대기열 재시도·15분 실패 |
-| `busPosition(bus)` | `currentBusGeo` | 위도·경도 보간 |
+| `busPosition(bus)` | `currentBusGeo` | 구간 도로 모양 위에서 (걸린 시간 비율 × 도로 길이)만큼 간 곳 |
+| `busPath(bus, lastIndex)` | — | API `path`: 버스 위치 → 경유지 lastIndex까지 남은 도로 좌표 |
 | `getCallDetail(callId)` | — | 공통 규약 `CallDetail` (없으면 null → 404) |
 | `getBuses()` | — | 공통 규약 `GET /buses` 배열 |
 
@@ -98,3 +99,20 @@ state = {
 
 웹은 거점 1곳 + 역 2곳에 나눠 둠. 우리도 승차 거점(HUB) 중 지역 서·남·동에 하나씩 둔다: BUS1 태릉입구역1번출구(11105), BUS2 망우역(07001), BUS3 신내역4번출구(07440) (`config.js`).
 처음엔 BUS1을 상봉역에 뒀더니 페르소나를 대기 0분에 바로 태우고 떠나서, 같은 방향 승객이 합승할 틈이 없었다. 지금 배치면 페르소나(상봉역)에는 망우역의 2호차가 약 2분 뒤 오고, 그 사이 같은 방향 호출이 같은 버스에 합승한다 (`npm run test:engine`의 시연 시나리오).
+
+## 6. 도로 경로 (B6)
+
+교수님 말씀 "GIS 좌표로 노선을 내려주면 그 자리에 점만 찍으면 된다"를 지도 그림을 그린 **같은 OSM 데이터**(`data/raw/osm-area.json`)로 한다. 카카오 길찾기 같은 외부 API·키가 없고, 경로가 지도 그림의 도로와 정확히 겹친다.
+
+`npm run paths` (`npm run collect`의 3단계, `scripts/lib/roads.js`):
+
+1. **도로 그래프**: `highway`가 primary·secondary·tertiary(+link)·unclassified·residential·living_street·busway인 길만. 동부간선·북부간선(trunk), 아파트 단지 안 길(service), 보행로는 뺀다. `oneway`·회전교차로는 한 방향만, 출입 금지(`access=no/private`)는 뺀다. 시범지역 사각형 밖으로 나가는 조각은 빼서 버스가 지도 밖으로 나가지 않는다. 서로 오갈 수 있는 가장 큰 도로망(강한 연결 요소)만 남긴다.
+2. **정류장 붙이기**: 정류장에서 가장 가까운 도로 위 지점(수선의 발)에 가상 교차점을 만든다 (25개 모두 17m 이내). 왕복 분리 도로는 정류장 쪽 차로에 붙으므로 그 방향으로만 출발·도착한다.
+3. **최단 경로**: 정류장 25개에서 각각 다익스트라(도로 길이 기준) → 600쌍. 좌표는 2m 오차 안에서 줄이고(더글러스-포커) 양 끝에 정류장 좌표를 붙인다. 0.3초, `paths.json` 약 340KB.
+
+결과: 도로 거리 ÷ 직선 거리 평균 **1.36배**(예전 보정값 1.3과 비슷), 봉화산 정상 부근 470m 안으로 지나는 경로 없음. 일방통행 때문에 많이 돌아가는 쌍도 있다 (금란교회앞 → 이화미디어고 직선 346m → 도로 1152m).
+
+엔진: 이동 시간 = 도로 거리 ÷ 26km/h. 버스 위치는 구간 도로 모양 위를 일정 속도로 움직인다. API `path` = 버스 지금 위치 → 남은 경유지들의 도로 좌표 (`CallDetail`은 내 하차 정류장까지, `GET /buses`는 끝까지). 앱·웹은 받은 좌표를 그대로 이으면 된다. 웹 관제는 1초 사이 움직임도 지난 `path`를 따라 옮겨서 높은 배속에서도 모퉁이를 질러가지 않는다.
+
+하지 않은 것: 회전 제한(좌회전 금지 등), 정류장에서의 유턴 금지, 도로 종류별 속도 차이. 시범 규모에서는 일정 속도 가정으로 충분하다고 봤다.
+

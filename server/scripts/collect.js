@@ -14,6 +14,7 @@
 //   data/map.png          지도 이미지 (GET /map/image)
 //   data/map.json         지도 정보 (GET /map, 공통 규약 MapInfo 형식)
 //   data/map-check.png    확인용: 지도 위에 정류장 점을 찍은 그림 (회색 = 전체, 노랑 = 시범)
+//   data/paths.json       모든 시범 정류장 쌍의 도로 경로 (B6, scripts/paths.js. 따로 돌리려면 npm run paths)
 //
 // 지도는 OSM 타일 서버에서 그림을 받지 않는다 (타일 이용 정책상 미리 받아 두는 것이 금지).
 // 대신 OSM 지도 데이터(도로·철도·공원·물·건물)를 Overpass API로 한 번 받아서 우리가 직접 그린다.
@@ -23,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const { readFirstSheet } = require('./lib/xlsx');
 const { toPixel, heightForWidth, distanceM } = require('./lib/geo');
+const { makePaths } = require('./paths');
 
 const DATA = path.join(__dirname, '..', 'data');
 const RAW = path.join(DATA, 'raw');
@@ -463,6 +465,9 @@ async function main() {
   console.log(`  그린 것: 도로 ${m.counts.road}, 건물 ${m.counts.building}, 녹지 ${m.counts.green}, 물 ${m.counts.water + m.counts.waterway}, 철도 ${m.counts.rail + m.counts.railTunnel}`);
   console.log(`  data/map.png (${m.map.widthPx}×${m.map.heightPx}px), data/map.json`);
   console.log('  확인용: data/map-check.png 를 열어 파란 고리(승차 거점)·노란 고리(주거지)가 실제 위치(역 앞·아파트 앞 도로)에 있는지 본다');
+
+  console.log('3) 도로 경로');
+  makePaths();
 }
 
 main().catch((e) => {

@@ -14,7 +14,7 @@ module.exports = {
 
   // 이동
   SPEED_KMH: 26, // 일정 속도
-  ROAD_FACTOR: 1.3, // 직선 거리 × 1.3 = 도로 거리 추정 (B6 도로 좌표 전까지)
+  ROAD_FACTOR: 1.3, // data/paths.json이 없거나 빠진 쌍만: 직선 거리 × 1.3 = 도로 거리 추정 (B6 이후 보통은 안 씀)
 
   // 배차 제약 (제안서 기준)
   MAX_WAIT_MIN: 15, // 호출 후 15분 안에 못 태우면 배차 불가(REJECTED)

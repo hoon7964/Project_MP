@@ -59,4 +59,11 @@ function openDb(file = path.join(DATA, 'dalmuri.db')) {
   };
 }
 
-module.exports = { openDb };
+// 도로 경로 (B6, npm run paths가 만듦). 크고(약 340KB) 서버 메모리에서만 쓰는 계산용 데이터라 DB에 넣지 않고 그대로 읽는다.
+// 없으면 null → 엔진이 직선 × 1.3으로 대신한다.
+function loadPaths(file = path.join(DATA, 'paths.json')) {
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+module.exports = { openDb, loadPaths };

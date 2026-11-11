@@ -37,7 +37,7 @@ let map;
 let mapBounds;
 let partySize = 1;
 let simClock = '--:--';
-const busLayers = {}; // busId → { marker, line, from, to, t0, rest }
+const busLayers = {}; // busId → { marker, line, track, cum, t0, rest }
 
 async function api(method, path, body) {
   const res = await fetch(path, {
@@ -134,16 +134,53 @@ function ensureBusLayer(b) {
   const icon = L.divIcon({ className: '', html, iconSize: [44, 44], iconAnchor: [22, 22] });
   const line = L.polyline([], { color: st.color, weight: 4, opacity: 0.9, dashArray: '2 9', lineCap: 'round', interactive: false }).addTo(map);
   const marker = L.marker([b.lat, b.lng], { icon, zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
-  return (busLayers[b.busId] = { marker, line, from: [b.lat, b.lng], to: [b.lat, b.lng], t0: 0, rest: [] });
+  return (busLayers[b.busId] = { marker, line, track: [[b.lat, b.lng]], cum: [0], t0: 0, rest: [], ahead: [] });
 }
 
-// 1초마다 받은 위치 사이를 부드럽게 이어 그린다 (앱 F7과 같은 방식)
+// ── 1초마다 받은 위치 사이를 부드럽게 (앱 F7과 같은 방식) ──
+// 직선으로 이으면 배속이 클 때 모퉁이를 질러가서, 지난번에 받은 도로 좌표(path)를 따라 새 위치까지 옮긴다.
+const flat = (a, b) => {
+  const k = Math.cos((a[0] * Math.PI) / 180);
+  return Math.hypot((b[1] - a[1]) * k, b[0] - a[0]) * 111320; // m
+};
+function cumOf(pts) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + flat(pts[i - 1], pts[i]));
+  return cum;
+}
+// 화면에 있는 위치 from에서, 지난 path(old)를 따라 새 위치 to까지 가는 좌표들
+function trackAlong(from, to, old) {
+  if (old.length < 2) return [from, to];
+  let best = { d: Infinity, i: 0 };
+  for (let i = 1; i < old.length; i++) {
+    const a = old[i - 1];
+    const b = old[i];
+    const k = Math.cos((a[0] * Math.PI) / 180);
+    const dx = (b[1] - a[1]) * k;
+    const dy = b[0] - a[0];
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((to[1] - a[1]) * k * dx + (to[0] - a[0]) * dy) / len2)) : 0;
+    const d = flat([a[0] + dy * t, a[1] + (b[1] - a[1]) * t], to);
+    if (d < best.d) best = { d, i };
+  }
+  if (best.d > 25) return [from, to]; // 노선이 바뀌었으면 그냥 직선
+  return [from, ...old.slice(1, best.i), to];
+}
 function animate(now) {
   for (const layer of Object.values(busLayers)) {
     const r = Math.min(1, (now - layer.t0) / POLL_MS);
-    const pos = [layer.from[0] + (layer.to[0] - layer.from[0]) * r, layer.from[1] + (layer.to[1] - layer.from[1]) * r];
+    const { track, cum } = layer;
+    const d = r * cum[cum.length - 1];
+    let i = 1;
+    while (i < track.length - 1 && cum[i] < d) i++;
+    const span = cum[i] - cum[i - 1] || 1;
+    const f = track.length > 1 ? Math.min(1, Math.max(0, (d - cum[i - 1]) / span)) : 0;
+    const a = track[Math.max(0, i - 1)];
+    const b = track[Math.min(i, track.length - 1)];
+    const pos = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
     layer.marker.setLatLng(pos);
-    layer.line.setLatLngs(layer.rest.length ? [pos, ...layer.rest] : []);
+    // 노선선: 지금 위치 → 이번 1초 동안 남은 길 → 서버가 준 남은 노선
+    layer.line.setLatLngs(layer.rest.length ? [pos, ...track.slice(i), ...layer.rest] : []);
   }
   requestAnimationFrame(animate);
 }
@@ -168,11 +205,14 @@ function renderBuses(buses) {
     const st = busStyle(b.busId);
     const layer = ensureBusLayer(b);
     const shown = layer.marker.getLatLng();
-    layer.from = [shown.lat, shown.lng];
-    layer.to = [b.lat, b.lng];
+    const to = [b.lat, b.lng];
+    layer.track = trackAlong([shown.lat, shown.lng], to, layer.ahead);
+    layer.cum = cumOf(layer.track);
     layer.t0 = performance.now();
-    // 노선선: path(도로 좌표)가 있으면 그대로, 없으면 route 정류장을 직선으로
-    layer.rest = b.path.length ? b.path.map((p) => [p.lat, p.lng]) : b.route.map((r) => [r.lat, r.lng]);
+    // 노선선: path(도로 좌표, 첫 점 = 버스 위치)가 있으면 그대로, 없으면 route 정류장을 직선으로
+    const ahead = b.path.length ? b.path.map((p) => [p.lat, p.lng]) : [to, ...b.route.map((r) => [r.lat, r.lng])];
+    layer.ahead = ahead;
+    layer.rest = ahead.length > 1 ? ahead.slice(1) : [];
 
     const moving = b.route.length > 0;
     onboard += b.load;

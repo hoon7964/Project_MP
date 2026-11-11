@@ -7,9 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const { createEngine, formatClock } = require('../engine');
+const { distanceM } = require('./lib/geo');
 
 const stops = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'stops.json'), 'utf8'));
 const nameOf = Object.fromEntries(stops.map((s) => [s.stopId, s.name]));
+const pathsFile = path.join(__dirname, '..', 'data', 'paths.json');
+const paths = fs.existsSync(pathsFile) ? JSON.parse(fs.readFileSync(pathsFile, 'utf8')) : null;
 const STEP = 0.1; // 시뮬 6초씩 진행 (서버 기본 tick과 같음)
 
 let failures = 0;
@@ -48,10 +51,38 @@ function showDecision(engine, callId) {
   }
 }
 
-// ───────── 1) 시연 시나리오 ─────────
-console.log('1) 시연 시나리오');
+// ───────── 0) 도로 경로 (B6) ─────────
+// 점 p에서 선분 a-b까지 거리(m)
+function distToSeg(p, a, b) {
+  const k = Math.cos((p.lat * Math.PI) / 180);
+  const ax = (a.lng - p.lng) * k, ay = a.lat - p.lat, bx = (b.lng - p.lng) * k, by = b.lat - p.lat;
+  const dx = bx - ax, dy = by - ay;
+  const t = dx * dx + dy * dy === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(ax + dx * t, ay + dy * t) * 111320;
+}
+const pt = ([lat, lng]) => ({ lat, lng });
+console.log('0) 도로 경로');
 {
-  const e = createEngine({ stops, config });
+  check(paths, 'data/paths.json 이 없음 → npm run paths');
+  const e = createEngine({ stops, config, paths });
+  console.log(`  도로로 가는 정류장 쌍 ${e.roadInfo.road}개, 직선으로 대신한 쌍 ${e.roadInfo.straight}개`);
+  check(e.roadInfo.straight === 0, '모든 정류장 쌍이 도로 경로를 가져야 함');
+  // 봉화산 한가운데(정상 부근) 250m 안으로 지나가는 경로가 없어야 함
+  const PEAK = { lat: 37.6094, lng: 127.0879 };
+  let closest = Infinity;
+  for (const p of Object.values(paths ? paths.pairs : {})) {
+    for (let i = 1; i < p.points.length; i++) closest = Math.min(closest, distToSeg(PEAK, pt(p.points[i - 1]), pt(p.points[i])));
+  }
+  console.log(`  봉화산 정상 부근에 가장 가까이 지나가는 경로: ${Math.round(closest)}m`);
+  check(closest > 250, '봉화산을 가로지르는 경로가 있음');
+  const straight = distanceM(stops.find((s) => s.stopId === '07003'), stops.find((s) => s.stopId === '07275'));
+  console.log(`  상봉역.중랑우체국 → 신내동성3차아파트: 직선 ${Math.round(straight)}m, 도로 ${paths && paths.pairs['07003>07275'].distM}m, 버스 ${e.travelMin('07003', '07275').toFixed(1)}분`);
+}
+
+// ───────── 1) 시연 시나리오 ─────────
+console.log('\n1) 시연 시나리오');
+{
+  const e = createEngine({ stops, config, paths });
   console.log(`  ${e.simClock()} 버스 3대 대기: ${e.getBuses().map((b) => b.busId + ' ' + nameOf[e._state.buses.find((x) => x.busId === b.busId).atStop]).join(', ')}`);
 
   console.log(`\n  [${e.simClock()}] 페르소나: 상봉역.중랑우체국 → 신내동성3차아파트, 1명`);
@@ -68,6 +99,15 @@ console.log('1) 시연 시나리오');
   showCall(e, r1.response.callId);
   check(r2.response.busId === r1.response.busId, '같은 방향 승객은 페르소나 버스에 합승해야 함');
 
+  // API path: 버스 위치에서 시작해 내 하차 정류장에서 끝나야 함
+  const d1 = e.getCallDetail(r1.response.callId);
+  const dest = stops.find((s) => s.stopId === '07275');
+  const last = d1.path[d1.path.length - 1];
+  console.log(`  ${r1.response.callId} path: 도로 좌표 ${d1.path.length}개 (노선 정류장 ${d1.route.length}곳)`);
+  check(d1.path.length > d1.route.length, 'path에 도로 좌표가 채워져야 함');
+  check(distanceM(d1.path[0], d1.bus) < 1, 'path는 버스 위치에서 시작해야 함');
+  check(distanceM(last, dest) < 1, 'path는 내 하차 정류장에서 끝나야 함');
+
   run(e, 2.5); // 2호차가 두 승객을 태우고 신내 쪽(동쪽)으로 출발한 뒤
   console.log(`\n  [${e.simClock()}] 반대 방향 승객 1명 (2호차가 떠난 직후): 상봉역.중랑우체국 → 태릉고등학교.원묵초등학교`);
   const r3 = e.requestCall({ originId: '07003', destId: '07430', partySize: 1 });
@@ -75,7 +115,22 @@ console.log('1) 시연 시나리오');
   showCall(e, r3.response.callId);
   check(r3.response.busId && r3.response.busId !== r1.response.busId, '반대 방향 승객은 다른 버스로 가야 함');
 
-  run(e, 40);
+  // 버스가 움직이는 동안 매번 위치가 도로 좌표 위에 있어야 함 (직선으로 질러가지 않음)
+  let off = 0;
+  for (let k = 0; k < 100; k++) {
+    run(e, 0.2);
+    for (const b of e._state.buses.filter((x) => x.status === 'moving')) {
+      const g = paths.pairs[b.from + '>' + b.to].points.map(pt);
+      const pos = e.getBuses().find((x) => x.busId === b.busId);
+      let dmin = Infinity;
+      for (let i = 1; i < g.length; i++) dmin = Math.min(dmin, distToSeg(pos, g[i - 1], g[i]));
+      off = Math.max(off, dmin);
+    }
+  }
+  console.log(`\n  20분 동안 버스 위치와 도로 경로 사이 최대 거리: ${off.toFixed(2)}m`);
+  check(off < 1, '버스가 도로 경로를 벗어남');
+
+  run(e, 20);
   console.log(`\n  [${e.simClock()}] 40분 뒤`);
   for (const r of [r1, r2, r3]) {
     const c = e._state.calls.get(r.response.callId);
@@ -101,7 +156,7 @@ console.log('\n2) 무작위 호출 테스트 (제약 검사)');
   const hubs = stops.filter((s) => s.kind === 'HUB').map((s) => s.stopId);
   const homes = stops.filter((s) => s.kind === 'HOME').map((s) => s.stopId);
 
-  const e = createEngine({ stops, config });
+  const e = createEngine({ stops, config, paths });
   const MINUTES = 180;
   let maxLoadSeen = 0;
   for (let t = 0; t < MINUTES; t += STEP) {

@@ -1,6 +1,6 @@
 {
   "name": "dalmuri-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "달무리버스 서버: 정류장·지도 데이터, 합승 배차, 버스 이동 시뮬레이션, API",
   "scripts": {
@@ -8,7 +8,8 @@
     "test:engine": "node --no-warnings=ExperimentalWarning scripts/test-engine.js",
     "test:api": "node scripts/test-api.js",
     "collect": "node scripts/collect.js",
-    "collect:refresh": "node scripts/collect.js --refresh-osm"
+    "collect:refresh": "node scripts/collect.js --refresh-osm",
+    "paths": "node scripts/paths.js"
   },
   "engines": {
     "node": ">=22.13.0"

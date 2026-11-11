@@ -76,6 +76,17 @@ async function main() {
     `GET /calls/${id} → ${d1.status}, ${d1.data.status} · ${d1.data.simClock} · 탑승까지 ${d1.data.etaPickupMin}분 · 노선 ${d1.data.route.length}곳`
   );
 
+  // B6: path = 버스 위치부터 내 하차 정류장까지 도로 좌표 (MapPoint 배열)
+  const p = d1.data.path || [];
+  const lastP = p[p.length - 1] || {};
+  const dest = stops.data.find((s) => s.stopId === '07275');
+  check(
+    p.length > d1.data.route.length && hasKeys(p[0], ['lat', 'lng']) && Math.abs(lastP.lat - dest.lat) < 1e-5 && Math.abs(lastP.lng - dest.lng) < 1e-5,
+    `  path: 도로 좌표 ${p.length}개, 버스 위치에서 시작해 신내동성3차아파트에서 끝남`
+  );
+  const moving = (await req('GET', '/buses')).data.find((b) => b.busId === d1.data.bus.busId);
+  check(moving.path.length >= p.length, `  GET /buses의 ${moving.busId} path: 도로 좌표 ${moving.path.length}개`);
+
   console.log('  6초 기다렸다가 다시 조회 (시간이 흘러야 함)...');
   await sleep(6000);
   const d2 = await req('GET', `/calls/${id}`);

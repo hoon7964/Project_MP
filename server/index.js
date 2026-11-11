@@ -5,12 +5,12 @@
 const path = require('path');
 const express = require('express');
 const config = require('./config');
-const { openDb } = require('./db');
+const { openDb, loadPaths } = require('./db');
 const { createEngine } = require('./engine');
 const { createApi } = require('./api');
 
 const db = openDb();
-const engine = createEngine({ stops: db.getStops(), config });
+const engine = createEngine({ stops: db.getStops(), config, paths: loadPaths() });
 const sim = { speed: config.SIM_SPEED }; // 배속 (관제에서 바꿀 수 있음)
 const api = createApi({ db, engine, sim });
 
@@ -57,6 +57,12 @@ const timer = setInterval(() => engine.tick((config.TICK_MS / 1000) * (sim.speed
 const server = app.listen(config.PORT, config.HOST, () => {
   console.log(`달무리버스 서버: http://localhost:${config.PORT}/  (에뮬레이터: http://10.0.2.2:${config.PORT})`);
   console.log(`시뮬 시각 ${engine.simClock()}부터 ${sim.speed}배속, 버스 ${config.BUS_COUNT}대, 정류장 ${db.getStops().length}개`);
+  const { road, straight } = engine.roadInfo;
+  console.log(
+    straight === 0
+      ? `도로 경로: 정류장 ${road}쌍 모두 도로를 따라 이동 (data/paths.json)`
+      : `⚠ 도로 경로: ${road}쌍만 도로, ${straight}쌍은 직선×${config.ROAD_FACTOR}로 대신함 → npm run paths 실행`
+  );
 });
 
 function shutdown() {
