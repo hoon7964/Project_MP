@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>달무리버스 · 관악구 신림동 심야 자율주행 3대 플릿 동적 배차 관제 시스템</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg-base: #06090e;
+    --panel-bg: rgba(14, 21, 33, 0.9);
+    --panel-surface: rgba(19, 29, 46, 0.8);
+    --panel-sub: #152032;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-light: rgba(255, 255, 255, 0.15);
+    --border-glow: rgba(0, 229, 204, 0.35);
+
+    --text-title: #ffffff;
+    --text-body: #e2e8f0;
+    --text-sub: #94a3b8;
+    --text-muted: #64748b;
+
+    --brand-cyan: #00e5cc;
+    --brand-cyan-glow: rgba(0, 229, 204, 0.4);
+    --brand-amber: #f59e0b;
+    --brand-amber-glow: rgba(245, 158, 11, 0.35);
+    --brand-purple: #a855f7;
+    --brand-purple-glow: rgba(168, 85, 247, 0.35);
+    --brand-red: #ef4444;
+    --brand-green: #10b981;
+    --brand-blue: #3b82f6;
+
+    --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    background-image: 
+      radial-gradient(circle at 8% 0%, rgba(0, 229, 204, 0.07) 0%, transparent 45%),
+      radial-gradient(circle at 92% 100%, rgba(168, 85, 247, 0.07) 0%, transparent 45%),
+      linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+    color: var(--text-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: 18px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .mono { font-family: var(--font-mono); }
+
+  .app-container {
+    width: 100%;
+    max-width: 1560px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* 1. TOP HEADER */
+  .top-header {
+    background: linear-gradient(135deg, rgba(18, 27, 43, 0.92), rgba(11, 18, 29, 0.88));
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(24px);
+    border-radius: 18px;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand-badge {
+    background: linear-gradient(135deg, var(--brand-cyan), #00a896);
+    color: #04211d;
+    font-weight: 900;
+    font-size: 14px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    box-shadow: 0 0 18px var(--brand-cyan-glow);
+    white-space: nowrap;
+    letter-spacing: -0.2px;
+  }
+
+  .header-title-box h1 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text-title);
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* Dynamic Active Bus Pill */
+  .fleet-pill {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+    font-size: 11.5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+  }
+
+  .fleet-pill.active-1 {
+    background: rgba(0, 229, 204, 0.12);
+    border-color: rgba(0, 229, 204, 0.45);
+    color: var(--brand-cyan);
+    box-shadow: 0 0 12px rgba(0, 229, 204, 0.25);
+  }
+
+  .fleet-pill.active-2 {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: var(--brand-amber);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+  }
+
+  .fleet-pill.active-3 {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.55);
+    color: #d8b4fe;
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.35);
+  }
+
+  .header-title-box p {
+    font-size: 12.5px;
+    color: var(--text-sub);
+    margin-top: 3px;
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .time-chip {
+    background: rgba(4, 8, 14, 0.65);
+    border: 1px solid var(--border-glow);
+    border-radius: 12px;
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.5), 0 0 12px rgba(0, 229, 204, 0.1);
+  }
+
+  .time-chip .label {
+    font-size: 11.5px;
+    color: var(--text-sub);
+    font-weight: 600;
+  }
+
+  .time-chip .val {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--brand-cyan);
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px var(--brand-cyan-glow);
+  }
+
+  .speed-group {
+    display: flex;
+    background: rgba(4, 8, 14, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .speed-group button {
+    background: transparent;
+    border: none;
+    color: var(--text-sub);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .speed-group button.active {
+    background: linear-gradient(135deg, var(--brand-cyan), #00b4a0);
+    color: #04211d;
+    box-shadow: 0 2px 8px var(--brand-cyan-glow);
+  }
+
+  .btn-reset {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--brand-red);
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+
+  .btn-reset:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: var(--brand-red);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  }
+
+  /* 2. TOP STORY BANNER (IMAGE 100% EXACT REPLICATION) */
+  .story-container {
+    background: linear-gradient(135deg, rgba(16, 25, 39, 0.92), rgba(11, 17, 27, 0.88));
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .story-main-title {
+    font-size: 19px;
+    font-weight: 900;
+    color: #ffffff;
+    text-align: center;
+    letter-spacing: -0.3px;
+  }
+
+  .story-main-title span.blue-glow {
+    color: #38bdf8;
+    text-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+  }
+
+  .story-3col-grid {
+    display: grid;
+    grid-template-columns: 260px 1fr 220px;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  @media (max-width: 1200px) {
+    .story-3col-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Left: Persona Card */
+  .persona-box {
+    background: #ffffff;
+    color: #1e293b;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+
+  .persona-avatar-wrap {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #fff3d4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+  }
+
+  .persona-titles {
+    text-align: left;
+    width: 100%;
+  }
+
+  .persona-titles h3 {
+    font-size: 16px;
+    font-weight: 900;
+    color: #0f172a;
+  }
+
+  .persona-titles p {
+    font-size: 12.5px;
+    color: #475569;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+
+  .persona-box-list {
+    width: 100%;
+    border: 1.5px solid #38bdf8;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: #0f172a;
+    line-height: 1.55;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  /* Center: Before vs After Diagrams */
+  .diagram-box {
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    position: relative;
+  }
+
+  .diagram-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .diagram-row-title {
+    font-size: 13.5px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .diagram-row-title.asis { color: #475569; }
+  .diagram-row-title.tobe { color: #0f172a; }
+
+  .diagram-bar-container {
+    display: flex;
+    height: 38px;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+
+  .bar-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  .bar-seg.bus-drop { background: #94a3b8; flex: 0 0 90px; color: #1e293b; font-weight: 900; }
+  .bar-seg.walk-long { background: #7f1d1d; flex: 1; color: #fee2e2; }
+  .bar-seg.home-reach { background: #15803d; flex: 0 0 65px; color: #dcfce7; }
+
+  .bar-seg.wait-node { background: #0284c7; flex: 0 0 100px; color: #e0f2fe; }
+  .bar-seg.dalmuri-node { background: #d97706; flex: 1; color: #fef3c7; }
+  .bar-seg.walk-short { background: #7f1d1d; flex: 0 0 75px; color: #fee2e2; }
+
+  .diagram-time-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .yellow-highlight-tag {
+    background: #fde047;
+    color: #000000;
+    font-size: 12px;
+    font-weight: 900;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 0 auto;
+  }
+
+  .floating-reduction-badge {
+    position: absolute;
+    right: 20px;
+    bottom: 24px;
+    background: #f59e0b;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    padding: 4px 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    transform: rotate(2deg);
+  }
+
+  /* Right: Cost Comparison Box */
+  .cost-box {
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    text-align: center;
+  }
+
+  .cost-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .cost-item h4 {
+    font-size: 13.5px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .cost-item .val {
+    font-size: 18px;
+    font-weight: 900;
+    color: #0f172a;
+    margin-top: 2px;
+  }
+
+  .cost-item .desc {
+    font-size: 10.5px;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .save-highlight-pill {
+    background: #fde047;
+    color: #000000;
+    font-size: 12px;
+    font-weight: 900;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 0 auto;
+  }
+
+  /* 3. MAIN WORKSPACE GRID */
+  .workspace-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  @media (max-width: 1080px) {
+    .workspace-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Map Panel */
+  .map-panel {
+    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .panel-header-simple {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: -0.2px;
+  }
+
+  .panel-title::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--brand-cyan);
+    box-shadow: 0 0 10px var(--brand-cyan-glow);
+  }
+
+  .map-box {
+    width: 100%;
+    height: 560px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 0 24px rgba(0,0,0,0.6), 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  #map { width: 100%; height: 100%; }
+
+  .map-legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-sub);
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 2px 4px;
+  }
+
+  .legend-items {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+  }
+
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  /* Right Control & Live Cards */
+  .control-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  /* One-Click Action Card */
+  .action-panel {
+    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .btn-main-action {
+    width: 100%;
+    background: linear-gradient(135deg, #00e5cc, #00b4d8);
+    color: #03201d;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14.5px;
+    font-weight: 900;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 18px var(--brand-cyan-glow);
+    transition: all 0.25s ease;
+  }
+
+  .btn-main-action:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+    box-shadow: 0 6px 22px rgba(0, 229, 204, 0.5);
+  }
+
+  .btn-sub-action {
+    width: 100%;
+    background: var(--panel-surface);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    color: var(--text-body);
+    border-radius: 12px;
+    padding: 11px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.25s ease;
+  }
+
+  .btn-sub-action:hover {
+    border-color: var(--brand-amber);
+    color: var(--brand-amber);
+    background: rgba(245, 158, 11, 0.1);
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.2);
+  }
+
+  /* Fleet Realtime Mini Status Card */
+  .fleet-status-card {
+    background: var(--panel-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .fleet-bus-item {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 7px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .fleet-bus-item.bus1 { border-color: rgba(0, 229, 204, 0.4); }
+  .fleet-bus-item.bus2 { border-color: rgba(245, 158, 11, 0.4); }
+  .fleet-bus-item.bus3 { border-color: rgba(168, 85, 247, 0.4); }
+
+  .fleet-bus-title {
+    font-size: 11.5px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  .fleet-bus-stat {
+    font-size: 11.5px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+
+  /* Custom Manual Call Form */
+  .manual-call-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .manual-call-box label {
+    font-size: 11.5px;
+    color: var(--text-sub);
+    font-weight: 600;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+  }
+
+  select {
+    width: 100%;
+    background: var(--panel-surface);
+    border: 1px solid var(--border);
+    color: var(--text-title);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+    text-overflow: ellipsis;
+    transition: border 0.2s ease;
+  }
+
+  select:focus {
+    border-color: var(--brand-cyan);
+  }
+
+  .btn-call-manual {
+    background: var(--panel-surface);
+    border: 1px solid var(--brand-cyan);
+    color: var(--brand-cyan);
+    font-weight: 800;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12.5px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+
+  .btn-call-manual:hover {
+    background: var(--brand-cyan);
+    color: #04211d;
+    box-shadow: 0 0 10px var(--brand-cyan-glow);
+  }
+
+  /* Live Broadcast Status Card */
+  .live-status-card {
+    background: linear-gradient(135deg, rgba(16, 25, 39, 0.88), rgba(11, 17, 27, 0.82));
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .status-broadcast {
+    background: rgba(4, 8, 14, 0.55);
+    border: 1px solid rgba(0, 229, 204, 0.3);
+    border-radius: 12px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  }
+
+  .status-broadcast-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--brand-cyan);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .status-broadcast-msg {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.45;
+    word-break: keep-all;
+  }
+
+  /* Passenger Simple List */
+  .pax-simple-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 3px;
+  }
+
+  .pax-simple-item {
+    background: var(--panel-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .pax-simple-item .name { font-weight: 700; color: #ffffff; white-space: nowrap; }
+  .pax-simple-item .bus-tag {
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 5px;
+    margin-left: 4px;
+    font-family: var(--font-mono);
+  }
+  .pax-simple-item .route { color: var(--text-sub); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pax-simple-item .state-tag {
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+
+  .state-tag.waiting { background: rgba(245, 158, 11, 0.18); color: var(--brand-amber); }
+  .state-tag.onboard { background: rgba(0, 229, 204, 0.18); color: var(--brand-cyan); }
+  .state-tag.dropped { background: rgba(16, 185, 129, 0.18); color: var(--brand-green); }
+
+  /* Map Marker Custom Elements */
+  .pin-node {
+    position: relative; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pin-core {
+    width: 25px; height: 25px; border-radius: 50%;
+    background: #ffffff; border: 3px solid #00897b;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+    position: relative;
+  }
+  .pin-core.hub {
+    background: #fff3e0; border-color: var(--brand-amber);
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.55);
+  }
+  .pin-center {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #00897b; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
+  .pin-core.hub .pin-center { background: var(--brand-amber); }
+
+  .pin-title {
+    position: absolute; top: 28px; left: 50%; transform: translateX(-50%);
+    background: rgba(8, 12, 18, 0.95); border: 1px solid rgba(255,255,255,0.2);
+    color: #ffffff; font-size: 11px; font-weight: 800; padding: 2px 8px;
+    border-radius: 5px; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+
+  .pin-wait-count {
+    position: absolute; top: -7px; right: -7px;
+    background: var(--brand-amber); color: #000; font-size: 10px; font-weight: 900;
+    width: 18px; height: 18px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  /* Multi-Bus Custom Marker */
+  .bus-node {
+    position: relative; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bus-ring-wave {
+    position: absolute; width: 46px; height: 46px; border-radius: 50%;
+    opacity: 0.4;
+    animation: wavePulse 1.6s infinite ease-out;
+  }
+  @keyframes wavePulse {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+  .bus-icon-circle {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #04211d; border: 2.5px solid #ffffff;
+    font-size: 13px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.6); z-index: 2;
+  }
+  .bus-tag-label {
+    position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+    font-size: 10.5px; font-weight: 900;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- 1. TOP HEADER -->
+  <header class="top-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span>🚌</span> 달무리버스
+      </div>
+      <div class="header-title-box">
+        <h1>
+          관악구 신림동 심야 귀갓길 실시간 동적 배차 관제 시스템
+          <span class="fleet-pill" id="fleetStatusPill">3대 대기 중</span>
+        </h1>
+        <p>N버스 시흥대로 하차 거점(kt구로지사) ↔ 신림동 난곡·미성 구릉 주거지 연계 서비스</p>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <div class="speed-group" id="speedGroup"></div>
+      <div class="time-chip">
+        <span class="label">운행 시각</span>
+        <span class="val mono" id="clockVal">01:36</span>
+      </div>
+      <button class="btn-reset" id="resetBtn">시뮬레이션 초기화</button>
+    </div>
+  </header>
+
+  <!-- 2. TOP STORY BANNER (IMAGE 100% REPLICATION) -->
+  <section class="story-container">
+    <div class="story-main-title">
+      달무리 버스는 이분을 <span class="blue-glow">안전하고 편리하게 집까지 모십니다</span>
+    </div>
+
+    <div class="story-3col-grid">
+      <!-- Left: Persona Profile -->
+      <div class="persona-box">
+        <div class="persona-avatar-wrap">👩🏻</div>
+        <div class="persona-titles">
+          <h3>23세 여성</h3>
+          <p>관악구 신림동 거주</p>
+        </div>
+        <div class="persona-box-list">
+          <div>· 01시에 영화관 알바를 마침</div>
+          <div>· N버스로 kt 구로지사까지 도착</div>
+          <div>· 문제는 정류장에서 집까지</div>
+          <div>· 어두운 이면도로 3.1km</div>
+        </div>
+      </div>
+
+      <!-- Center: Journey Flow Comparison -->
+      <div class="diagram-box">
+        <!-- As-Is -->
+        <div class="diagram-row">
+          <div class="diagram-row-title asis">
+            <span>▲ 현상황</span> - N버스에서 내린 뒤 혼자 걷는다
+          </div>
+          <div class="diagram-bar-container">
+            <div class="bar-seg bus-drop">N버스 하차</div>
+            <div class="bar-seg walk-long">도보 2.8KM - 50분</div>
+            <div class="bar-seg home-reach">귀가</div>
+          </div>
+          <div class="diagram-time-row">
+            <span>01:36 kt구로지사</span>
+            <span>02:26 집 도착</span>
+          </div>
+          <div style="text-align:center;">
+            <span class="yellow-highlight-tag">도보 시간 50분</span>
+          </div>
+        </div>
+
+        <!-- To-Be -->
+        <div class="diagram-row" style="margin-top: 4px;">
+          <div class="diagram-row-title tobe">
+            <span style="color:#f59e0b;">★ 달무리버스 운행</span> - N버스에서 내려서 달무리버스 탑승
+          </div>
+          <div class="diagram-bar-container">
+            <div class="bar-seg bus-drop">N버스 하차</div>
+            <div class="bar-seg wait-node">정류장 대기 5분</div>
+            <div class="bar-seg dalmuri-node">달무리버스 13분</div>
+            <div class="bar-seg walk-short">도보 2분</div>
+            <div class="bar-seg home-reach">귀가</div>
+          </div>
+          <div class="diagram-time-row">
+            <span>01:36 kt구로지사</span>
+            <span>01:56 집 도착</span>
+          </div>
+          <div style="text-align:center;">
+            <span class="yellow-highlight-tag">도보 시간 2분 & 30분 일찍 귀가</span>
+          </div>
+        </div>
+
+        <div class="floating-reduction-badge">
+          도보 시간 -48분!
+        </div>
+      </div>
+
+      <!-- Right: Cost Benefit -->
+      <div class="cost-box">
+        <div class="cost-item">
+          <h4><span style="color:#64748b;">▲</span> 택시 이용시</h4>
+          <div class="val">약 9,400원</div>
+          <div class="desc">(야간할증 40%)<br>*서울 택시 요금, 서울시</div>
+        </div>
+
+        <div style="border-top:1px dashed #cbd5e1; margin:4px 0;"></div>
+
+        <div class="cost-item">
+          <h4><span style="color:#f59e0b;">★</span> 달무리버스</h4>
+          <div class="val" style="color:#0284c7; font-size:16px;">시내 버스 요금<br>1,500원</div>
+          <div class="desc">(시범운행 기간동안 무료)</div>
+        </div>
+
+        <div style="margin-top:2px;">
+          <span class="save-highlight-pill">7,900원 절약!</span>
+        </div>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted); text-align: right;">
+      *관악구 신림동 예시 동선 기준 모식도, 보행 4km/h, 배차 평균 대기 5분 가정
+    </div>
+  </section>
+
+  <!-- 3. MAIN WORKSPACE (MAP & INTERACTIVE CONTROLS) -->
+  <main class="workspace-grid">
+
+    <!-- Left: Wide Map Box -->
+    <section class="map-panel">
+      <div class="panel-header-simple">
+        <div class="panel-title">관악구 신림동 실제 도로망 (kt구로지사·신림역·난곡구릉지) · 3대 실시간 자율 배차 경로</div>
+        <div style="font-size: 12px; color: var(--text-sub);">
+          총 탑승: <b id="totalOnboard" style="color: var(--brand-cyan);" class="mono">0</b> / 18명 · 대기 승객: <b id="totalWaiting" style="color: var(--brand-amber);" class="mono">0</b>명
+        </div>
+      </div>
+
+      <div class="map-box">
+        <div id="map"></div>
+      </div>
+
+      <div class="map-legend-row">
+        <div class="legend-items">
+          <div class="legend-item"><span class="dot" style="background: var(--brand-amber);"></span> N버스 거점 (kt구로지사)</div>
+          <div class="legend-item"><span class="dot" style="background: #00897b;"></span> 신림동 주거지 정류장</div>
+          <div class="legend-item"><span class="dot" style="background: var(--brand-cyan);"></span> 1호차 (kt구로지사)</div>
+          <div class="legend-item"><span class="dot" style="background: var(--brand-amber);"></span> 2호차 (신림역)</div>
+          <div class="legend-item"><span class="dot" style="background: var(--brand-purple);"></span> 3호차 (난곡사거리)</div>
+        </div>
+        <div style="color: var(--text-muted); font-size: 11px;">
+          * 관악구 신림동 3대 플릿 다중 동적 배차(Multi-Vehicle DRT) 시스템
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Easy Control & Live Updates -->
+    <div class="control-column">
+
+      <!-- One-Click Scenario Panel -->
+      <section class="action-panel">
+        <button class="btn-main-action" id="personaBtn">
+          <span>🚀</span> 신림동 페르소나 귀가 시뮬레이션 시작
+        </button>
+        <button class="btn-sub-action" id="demoBtn">
+          🎲 관악구 신림동 전역 승객 3명 동시 호출 (3대 분산 배차)
+        </button>
+
+        <!-- Fleet Realtime Status (3 Buses) -->
+        <div class="fleet-status-card">
+          <div class="fleet-bus-item bus1">
+            <div class="fleet-bus-title" style="color: var(--brand-cyan);">
+              <span>●</span> 1호차
+            </div>
+            <div class="fleet-bus-stat" id="statBus1">대기중 (0/6)</div>
+          </div>
+          <div class="fleet-bus-item bus2">
+            <div class="fleet-bus-title" style="color: var(--brand-amber);">
+              <span>●</span> 2호차
+            </div>
+            <div class="fleet-bus-stat" id="statBus2">대기중 (0/6)</div>
+          </div>
+          <div class="fleet-bus-item bus3">
+            <div class="fleet-bus-title" style="color: var(--brand-purple);">
+              <span>●</span> 3호차
+            </div>
+            <div class="fleet-bus-stat" id="statBus3">대기중 (0/6)</div>
+          </div>
+        </div>
+
+        <!-- Manual Call Form -->
+        <div class="manual-call-box">
+          <label>정류장 직접 선택 호출</label>
+          <div class="form-row">
+            <select id="originSel"></select>
+            <select id="destSel"></select>
+            <button class="btn-call-manual" id="callBtn">호출</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Broadcast Status Card -->
+      <section class="live-status-card">
+        <div class="status-broadcast">
+          <div class="status-broadcast-title">
+            <span>●</span> 관악구 신림동 3대 통합 배차 관제 방송
+          </div>
+          <div class="status-broadcast-msg" id="liveBroadcastMsg">
+            달무리버스 3대(1·2·3호차)가 관악구 주요 거점에서 대기 중입니다.
+          </div>
+        </div>
+
+        <div style="font-size: 12px; font-weight: 700; color: var(--text-title); margin-top: 2px;">
+          호출 승객 현황 (배정 차량 표시)
+        </div>
+        <div class="pax-simple-list" id="paxList">
+          <div style="color: var(--text-muted); font-size: 11.5px; padding: 10px 0; text-align: center;">
+            아직 호출된 승객이 없습니다.
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ================= CONFIG: REAL STOPS IN GWANAK SILLIM-DONG (관악구 신림동·kt구로지사 실제 데이터) ================= */
+const STOPS = [
+  {id:'HUB', name:'N버스 거점 (kt구로지사)', lat:37.4830, lng:126.9012, isHub:true},
+  {id:'S1',  name:'신대방역 (2호선)',         lat:37.4875, lng:126.9131},
+  {id:'S2',  name:'신림역 (2호선·신림선)',    lat:37.4842, lng:126.9298},
+  {id:'S3',  name:'미성동·문성초교 주거지',   lat:37.4765, lng:126.9110},
+  {id:'S4',  name:'난곡사거리 (신림서부)',    lat:37.4790, lng:126.9185},
+  {id:'S5',  name:'난향동 구릉주거지',        lat:37.4665, lng:126.9195},
+  {id:'S6',  name:'신림동 구릉주거지 (2.8km)',lat:37.4710, lng:126.9280}, // Persona Destination
+  {id:'S7',  name:'서울대벤처타운역·대학동',  lat:37.4725, lng:126.9335},
+];
+
+/* ================= 3 BUSES CONFIGURATION ================= */
+const BUSES_CONFIG = [
+  { id: 'BUS1', name: '1호차', color: '#00e5cc', tagBg: '#00e5cc', tagColor: '#04211d', initialStop: 'HUB' }, // kt구로지사 (N버스 하차점)
+  { id: 'BUS2', name: '2호차', color: '#f59e0b', tagBg: '#f59e0b', tagColor: '#241503', initialStop: 'S2'  }, // 신림역
+  { id: 'BUS3', name: '3호차', color: '#a855f7', tagBg: '#a855f7', tagColor: '#ffffff', initialStop: 'S4'  }  // 난곡사거리
+];
+
+const SPEED_KMH = 26;
+const SPEED_M_PER_MIN = (SPEED_KMH * 1000) / 60;
+const CAPACITY = 6;
+const MAX_WAIT = 15;
+const MAX_DELAY = 8;
+const TICK_MS = 200;
+
+const stopById = id => STOPS.find(s=>s.id===id);
+const stopName = id => stopById(id).name;
+
+function geoDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function dist(a, b) {
+  const s1 = stopById(a), s2 = stopById(b);
+  return geoDistance(s1.lat, s1.lng, s2.lat, s2.lng);
+}
+
+function travelTime(a, b) {
+  if (a === b) return 0;
+  return dist(a, b) / SPEED_M_PER_MIN;
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const fmtMin = m => (m < 1 && m >= 0) ? '1분 미만' : Math.round(m) + '분';
+const fmtClock = m => {
+  m = Math.round(m);
+  const h = Math.floor(m / 60) % 24, mm = m % 60;
+  return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+};
+
+/* ================= STATE ================= */
+let state = null;
+function freshState(){
+  return {
+    simTime: 1*60 + 36, // 01:36 Start
+    speedLevel: 4,
+    running: true,
+    buses: BUSES_CONFIG.map(cfg => ({
+      id: cfg.id,
+      name: cfg.name,
+      color: cfg.color,
+      tagBg: cfg.tagBg,
+      tagColor: cfg.tagColor,
+      status: 'idle',
+      atStop: cfg.initialStop,
+      from: null,
+      to: null,
+      segStart: 0,
+      segEnd: 0,
+      onboard: new Set(),
+      waypoints: []
+    })),
+    passengers: {},
+    pending: [],
+    nextPaxId: 1,
+    broadcast: '달무리버스 3대(1·2·3호차)가 관악구 주요 거점에서 대기 중입니다.',
+  };
+}
+
+function setBroadcast(msg) {
+  state.broadcast = msg;
+  const el = document.getElementById('liveBroadcastMsg');
+  if(el) el.textContent = msg;
+}
+
+/* ================= LEAFLET MAP ================= */
+let map, busMarkers = {}, stopMarkers = {}, routePolylines = {};
+
+function initLeafletMap() {
+  // Center on Sillim-dong / Nangok / KT Guro Jisa area
+  map = L.map('map', {
+    center: [37.478, 126.918],
+    zoom: 14,
+    zoomControl: true
+  });
+
+  // CartoDB Voyager High-Contrast Tile
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> & OSM',
+    maxZoom: 19,
+    subdomains: 'abcd'
+  }).addTo(map);
+
+  // Stop Markers
+  STOPS.forEach(s => {
+    const isHub = s.isHub;
+    const iconHtml = `
+      <div class="pin-node">
+        <div class="pin-core ${isHub ? 'hub' : ''}">
+          <div class="pin-center"></div>
+        </div>
+        <div class="pin-wait-count" id="badge-${s.id}" style="display:none;">0</div>
+        <div class="pin-title">${s.name}</div>
+      </div>
+    `;
+    const icon = L.divIcon({
+      className: '',
+      html: iconHtml,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
+    });
+
+    const marker = L.marker([s.lat, s.lng], {icon}).addTo(map);
+    marker.bindPopup(`<b>${s.name}</b><br>${isHub ? 'N버스 하차 거점' : '신림동 주거지 정류장'}`);
+    stopMarkers[s.id] = marker;
+  });
+
+  // 3 Buses Markers & Routes
+  BUSES_CONFIG.forEach(cfg => {
+    const busHtml = `
+      <div class="bus-node">
+        <div class="bus-ring-wave" style="background:${cfg.color};"></div>
+        <div class="bus-icon-circle" style="border-color:${cfg.color}; color:${cfg.color};">
+          <span id="busCount-${cfg.id}">0</span>
+        </div>
+        <div class="bus-tag-label" style="background:${cfg.tagBg}; color:${cfg.tagColor};">
+          ${cfg.name}
+        </div>
+      </div>
+    `;
+    const busIcon = L.divIcon({
+      className: '',
+      html: busHtml,
+      iconSize: [46, 46],
+      iconAnchor: [23, 23]
+    });
+
+    const initPos = stopById(cfg.initialStop);
+    const bMarker = L.marker([initPos.lat, initPos.lng], {icon: busIcon, zIndexOffset: 1000}).addTo(map);
+    busMarkers[cfg.id] = bMarker;
+
+    const rPoly = L.polyline([], {
+      color: cfg.color,
+      weight: 4.5,
+      opacity: 0.85,
+      dashArray: '8, 8'
+    }).addTo(map);
+    routePolylines[cfg.id] = rPoly;
+  });
+}
+
+/* ================= MULTI-VEHICLE ROUTE EVALUATION ================= */
+function evaluateBusRoute(bus, waypoints, baseLoc, baseTime){
+  let loc = baseLoc, t = baseTime;
+  const onboard = new Set(bus.onboard);
+  const pickupTimes = {}, dropoffTimes = {};
+  let feasible = true;
+  for(const wp of waypoints){
+    t += travelTime(loc, wp.stopId);
+    loc = wp.stopId;
+    wp.dropoffs.forEach(id => { dropoffTimes[id] = t; onboard.delete(id); });
+    wp.pickups.forEach(id => { pickupTimes[id] = t; onboard.add(id); });
+    if(onboard.size > CAPACITY) feasible = false;
+  }
+  return { feasible, pickupTimes, dropoffTimes, endTime: t };
+}
+
+function buildCandidate(original, p, d, pax){
+  const arr = original.map(wp => ({stopId: wp.stopId, pickups: [...wp.pickups], dropoffs: [...wp.dropoffs]}));
+  arr.splice(p, 0, {stopId: pax.origin, pickups: [pax.id], dropoffs: []});
+  arr.splice(d+1, 0, {stopId: pax.dest, pickups: [], dropoffs: [pax.id]});
+  return arr;
+}
+
+// Search across ALL 3 BUSES for the globally optimal assignment
+function attemptInsertGlobal(pax){
+  let globalBest = null;
+
+  for(const bus of state.buses){
+    const original = bus.waypoints;
+    const baseLoc = bus.status === 'moving' ? bus.from : bus.atStop;
+    const baseTime = bus.status === 'moving' ? bus.segStart : state.simTime;
+    const minP = bus.status === 'moving' ? 1 : 0;
+
+    for(let p = minP; p <= original.length; p++){
+      for(let d = p; d <= original.length; d++){
+        const candidate = buildCandidate(original, p, d, pax);
+        const res = evaluateBusRoute(bus, candidate, baseLoc, baseTime);
+        if(!res.feasible) continue;
+        if(res.pickupTimes[pax.id] - pax.requestTime > MAX_WAIT + 1e-9) continue;
+
+        let delayOk = true;
+        for(const id in res.pickupTimes){
+          if(id === pax.id) continue;
+          const p2 = state.passengers[id];
+          if(p2 && p2.promisedPickup != null && res.pickupTimes[id] - p2.promisedPickup > MAX_DELAY + 1e-9){ delayOk = false; break; }
+        }
+        if(delayOk){
+          for(const id in res.dropoffTimes){
+            const p2 = state.passengers[id];
+            if(p2 && p2.promisedDropoff != null && res.dropoffTimes[id] - p2.promisedDropoff > MAX_DELAY + 1e-9){ delayOk = false; break; }
+          }
+        }
+        if(!delayOk) continue;
+
+        if(!globalBest || res.dropoffTimes[pax.id] < globalBest.res.dropoffTimes[pax.id]){
+          globalBest = { busId: bus.id, candidate, res };
+        }
+      }
+    }
+  }
+  return globalBest;
+}
+
+function commitInsert(pax, best){
+  const targetBus = state.buses.find(b => b.id === best.busId);
+  targetBus.waypoints = best.candidate;
+  pax.assignedBus = targetBus.name;
+  pax.assignedBusId = targetBus.id;
+  pax.assignedBusColor = targetBus.color;
+
+  for(const id in best.res.pickupTimes){
+    if(state.passengers[id]) state.passengers[id].promisedPickup = best.res.pickupTimes[id];
+  }
+  for(const id in best.res.dropoffTimes){
+    if(state.passengers[id]) state.passengers[id].promisedDropoff = best.res.dropoffTimes[id];
+  }
+  pax.status = 'waiting';
+  const wait = pax.promisedPickup - pax.requestTime;
+  setBroadcast(`[배차 확정] 🚍 ${targetBus.name} 배정 ➔ ${pax.label}: ${stopName(pax.origin)} 승차 (약 ${fmtMin(wait)} 후) ➔ ${stopName(pax.dest)}`);
+}
+
+function requestRide(originId, destId, customLabel){
+  if(originId === destId) return;
+  const paxId = 'P' + (state.nextPaxId++);
+  const pax = {
+    id: paxId,
+    label: customLabel || `승객${state.nextPaxId-1}`,
+    origin: originId, dest: destId,
+    requestTime: state.simTime,
+    status: 'requested',
+    promisedPickup: null, promisedDropoff: null,
+    assignedBus: null,
+    assignedBusId: null
+  };
+  state.passengers[pax.id] = pax;
+
+  const best = attemptInsertGlobal(pax);
+  if(best){
+    commitInsert(pax, best);
+  } else {
+    pax.status = 'pending';
+    state.pending.push(pax.id);
+    setBroadcast(`[배차 대기] ${pax.label}님의 호출이 접수되었습니다. 여석 확보 시 최적 차량에 배차됩니다.`);
+  }
+}
+
+function retryPending(){
+  const still = [];
+  for(const id of state.pending){
+    const pax = state.passengers[id];
+    if(!pax || pax.status !== 'pending') continue;
+    if(state.simTime - pax.requestTime > MAX_WAIT){
+      pax.status = 'missed';
+      continue;
+    }
+    const best = attemptInsertGlobal(pax);
+    if(best){ commitInsert(pax, best); }
+    else still.push(id);
+  }
+  state.pending = still;
+}
+
+/* ================= SIMULATION TICK (ALL 3 BUSES) ================= */
+function startBusNextSegment(bus){
+  const wp = bus.waypoints[0];
+  const tt = travelTime(bus.atStop, wp.stopId);
+  if(tt <= 1e-9){ arriveBusAtStop(bus); return; }
+  bus.from = bus.atStop; bus.to = wp.stopId;
+  bus.segStart = state.simTime; bus.segEnd = state.simTime + tt;
+  bus.status = 'moving';
+}
+
+function arriveBusAtStop(bus){
+  const wp = bus.waypoints.shift();
+  bus.atStop = wp.stopId;
+  bus.status = 'idle';
+  bus.from = null; bus.to = null;
+
+  wp.dropoffs.forEach(id => {
+    bus.onboard.delete(id);
+    const pax = state.passengers[id];
+    if(pax){ pax.status = 'dropped'; pax.droppedAt = state.simTime; }
+    setBroadcast(`🎉 [안전 도착] ${pax ? pax.label : '승객'}님이 ${bus.name}에서 ${stopName(wp.stopId)}에 하차했습니다.`);
+  });
+  wp.pickups.forEach(id => {
+    bus.onboard.add(id);
+    const pax = state.passengers[id];
+    if(pax) pax.status = 'onboard';
+    setBroadcast(`🚍 [승차 완료] ${pax ? pax.label : '승객'}님이 ${stopName(wp.stopId)}에서 ${bus.name}에 탑승했습니다.`);
+  });
+  retryPending();
+}
+
+function tick(dtMin){
+  state.simTime += dtMin;
+
+  state.buses.forEach(bus => {
+    if(bus.status === 'idle'){
+      if(bus.waypoints.length > 0) startBusNextSegment(bus);
+    }
+    if(bus.status === 'moving'){
+      if(state.simTime >= bus.segEnd) arriveBusAtStop(bus);
+    }
+  });
+
+  for(const id in state.passengers){
+    const p = state.passengers[id];
+    if(p.status === 'dropped' && state.simTime - p.droppedAt > 8) delete state.passengers[id];
+    if(p.status === 'missed' && state.simTime - p.requestTime > 15) delete state.passengers[id];
+  }
+}
+
+/* ================= RENDER ================= */
+function currentBusGeo(bus){
+  if(bus.status === 'moving'){
+    const f = stopById(bus.from), t = stopById(bus.to);
+    const frac = Math.min(1, Math.max(0, (state.simTime - bus.segStart) / (bus.segEnd - bus.segStart)));
+    return { lat: lerp(f.lat, t.lat, frac), lng: lerp(f.lng, t.lng, frac) };
+  }
+  const s = stopById(bus.atStop);
+  return { lat: s.lat, lng: s.lng };
+}
+
+function renderMap(){
+  const waitingByStop = {};
+  let totalWaitingCount = 0;
+  for(const id in state.passengers){
+    const p = state.passengers[id];
+    if(p.status === 'requested' || p.status === 'waiting' || p.status === 'pending'){
+      waitingByStop[p.origin] = (waitingByStop[p.origin] || 0) + 1;
+      totalWaitingCount++;
+    }
+  }
+
+  STOPS.forEach(s => {
+    const badgeEl = document.getElementById(`badge-${s.id}`);
+    if(badgeEl){
+      if(waitingByStop[s.id]){
+        badgeEl.textContent = waitingByStop[s.id];
+        badgeEl.style.display = 'flex';
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    }
+  });
+
+  let totalOnboardCount = 0;
+  let activeBusCount = 0;
+
+  state.buses.forEach(bus => {
+    totalOnboardCount += bus.onboard.size;
+    
+    const isOperating = bus.status === 'moving' || bus.onboard.size > 0 || bus.waypoints.length > 0;
+    if (isOperating) {
+      activeBusCount++;
+    }
+
+    const bPos = currentBusGeo(bus);
+    const bMarker = busMarkers[bus.id];
+    if(bMarker){
+      bMarker.setLatLng([bPos.lat, bPos.lng]);
+      const countEl = document.getElementById(`busCount-${bus.id}`);
+      if(countEl) countEl.textContent = bus.onboard.size;
+    }
+
+    const routeLatLngs = [[bPos.lat, bPos.lng]];
+    bus.waypoints.forEach(wp => {
+      const s = stopById(wp.stopId);
+      routeLatLngs.push([s.lat, s.lng]);
+    });
+    if(routePolylines[bus.id]) routePolylines[bus.id].setLatLngs(routeLatLngs);
+
+    const statEl = document.getElementById(`stat${bus.id.replace('BUS', 'Bus')}`);
+    if(statEl){
+      const statusText = bus.status === 'moving' ? `${stopName(bus.to)}행` : '대기중';
+      statEl.textContent = `${statusText} (${bus.onboard.size}/6)`;
+    }
+  });
+
+  const fleetPillEl = document.getElementById('fleetStatusPill');
+  if (fleetPillEl) {
+    fleetPillEl.className = 'fleet-pill';
+    if (activeBusCount === 0) {
+      fleetPillEl.textContent = '3대 대기 중';
+    } else if (activeBusCount === 1) {
+      fleetPillEl.textContent = '1대 운행 중 (2대 대기)';
+      fleetPillEl.classList.add('active-1');
+    } else if (activeBusCount === 2) {
+      fleetPillEl.textContent = '2대 운행 중 (1대 대기)';
+      fleetPillEl.classList.add('active-2');
+    } else if (activeBusCount === 3) {
+      fleetPillEl.textContent = '3대 동시 운행 중';
+      fleetPillEl.classList.add('active-3');
+    }
+  }
+
+  document.getElementById('totalOnboard').textContent = totalOnboardCount;
+  document.getElementById('totalWaiting').textContent = totalWaitingCount;
+}
+
+const STATE_LABEL = {requested:'접수 중', waiting:'승차 대기', pending:'배차 대기', onboard:'탑승 중', dropped:'하차 완료', missed:'취소됨'};
+
+function renderPaxList(){
+  const list = document.getElementById('paxList');
+  const items = Object.values(state.passengers).sort((a,b) => a.requestTime - b.requestTime);
+  if(items.length === 0){
+    list.innerHTML = '<div style="color: var(--text-muted); font-size: 11.5px; padding: 10px 0; text-align: center;">현재 대기 중인 승객이 없습니다.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  items.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'pax-simple-item';
+    let statusText = STATE_LABEL[p.status] || p.status;
+    if(p.status === 'waiting') statusText = `${fmtMin(p.promisedPickup - state.simTime)} 후 탑승`;
+    if(p.status === 'onboard') statusText = `${fmtMin(p.promisedDropoff - state.simTime)} 후 하차`;
+
+    const busBadge = p.assignedBus 
+      ? `<span class="bus-tag" style="background:${p.assignedBusColor||'#38bdf8'}; color:#04211d;">${p.assignedBus}</span>` 
+      : '';
+
+    div.innerHTML = `
+      <div style="min-width: 0; flex: 1;">
+        <div class="name">${p.label} ${busBadge}</div>
+        <div class="route">${stopName(p.origin)} ➔ ${stopName(p.dest)}</div>
+      </div>
+      <div class="state-tag ${p.status}">${statusText}</div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function render(){
+  document.getElementById('clockVal').textContent = fmtClock(state.simTime);
+  renderMap();
+  renderPaxList();
+}
+
+/* ================= UI SETUP ================= */
+function populateSelects(){
+  const o = document.getElementById('originSel');
+  const d = document.getElementById('destSel');
+  o.innerHTML = ''; d.innerHTML = '';
+  STOPS.forEach(s => {
+    o.appendChild(new Option(s.name, s.id));
+    d.appendChild(new Option(s.name, s.id));
+  });
+  d.value = 'S6'; // Default destination: 신림동 구릉주거지
+}
+
+function setupSpeedButtons(){
+  const wrap = document.getElementById('speedGroup');
+  wrap.innerHTML = '';
+  [ [1,'1x'], [4,'4x'], [10,'10x'] ].forEach(([lvl, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if(lvl === state.speedLevel) b.classList.add('active');
+    b.onclick = () => { state.speedLevel = lvl; setupSpeedButtons(); };
+    wrap.appendChild(b);
+  });
+}
+
+function init(){
+  state = freshState();
+  populateSelects();
+  setupSpeedButtons();
+  setBroadcast('달무리버스 3대(1·2·3호차)가 관악구 신림 거점(kt구로지사·신림역·난곡사거리)에서 대기 중입니다.');
+  render();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initLeafletMap();
+  init();
+
+  document.getElementById('callBtn').onclick = () => {
+    const o = document.getElementById('originSel').value;
+    const d = document.getElementById('destSel').value;
+    requestRide(o, d);
+    render();
+  };
+
+  // Big One-Click Persona Button (Exact Match with Image)
+  document.getElementById('personaBtn').onclick = () => {
+    requestRide('HUB', 'S6', '23세 여성 (신림동 2.8km)');
+    render();
+  };
+
+  // Random 3 calls from random stops across Sillim area
+  document.getElementById('demoBtn').onclick = () => {
+    for(let i = 0; i < 3; i++){
+      const ids = STOPS.map(s => s.id);
+      let o = ids[Math.floor(Math.random() * ids.length)];
+      let d = ids[Math.floor(Math.random() * ids.length)];
+      while(d === o) d = ids[Math.floor(Math.random() * ids.length)];
+      requestRide(o, d);
+    }
+    render();
+  };
+
+  document.getElementById('resetBtn').onclick = () => { init(); };
+
+  setInterval(() => {
+    if(!state) return;
+    const dtMin = state.speedLevel * (TICK_MS/1000) / 6;
+    tick(dtMin);
+    render();
+  }, TICK_MS);
+});
+</script>
+</body>
+</html>
