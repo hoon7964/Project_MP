@@ -1,0 +1,29 @@
+# ── Android (DalmuriBus/) ──
+.gradle/
+.kotlin/
+build/
+captures/
+local.properties
+*.iml
+.idea/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# ── Node 서버 (server/) ──
+node_modules/
+.env
+npm-debug.log*
+
+# DB 파일은 커밋하지 않음 (수집 스크립트로 다시 만듦)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ── OS ──
+.DS_Store
+Thumbs.db
