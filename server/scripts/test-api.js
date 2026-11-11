@@ -47,6 +47,14 @@ async function main() {
   const buses = await req('GET', '/buses');
   check(buses.status === 200 && buses.data.length >= 1 && hasKeys(buses.data[0], ['busId', 'lat', 'lng', 'load', 'capacity', 'route', 'path']), `GET /buses → ${buses.status}, ${buses.data.length}대`);
 
+  // 관제 전용 (웹 관제만 씀)
+  const sim = await req('GET', '/sim');
+  check(sim.status === 200 && hasKeys(sim.data, ['simClock', 'speed', 'busCount']), `GET /sim → ${sim.status}, ${sim.data.simClock} · ${sim.data.speed}배속`);
+  const badSpeed = await req('POST', '/sim/speed', { speed: 999 });
+  check(badSpeed.status === 400, `POST /sim/speed 999 → ${badSpeed.status} (400이어야 함)`);
+  const list = await req('GET', '/calls');
+  check(list.status === 200 && Array.isArray(list.data), `GET /calls → ${list.status}, ${list.data.length}건`);
+
   // 잘못된 요청
   const same = await req('POST', '/calls', { originId: '07003', destId: '07003', partySize: 1 });
   check(same.status === 400, `POST /calls 같은 정류장 → ${same.status} (400이어야 함) ${same.data.error || ''}`);

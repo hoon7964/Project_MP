@@ -8,8 +8,10 @@
 //   POST /calls            → CallResponse      (잘못된 요청 400)
 //   GET  /calls/{callId}   → CallDetail        (모르는 callId 404)
 //   GET  /buses            → BusState 배열 (웹 관제용)
+//
+// 관제 전용 (공통 규약 밖, 앱은 안 씀): GET /calls, GET /sim, POST /sim/speed, POST /sim/reset
 
-function createApi({ db, engine }) {
+function createApi({ db, engine, sim }) {
   const stops = db.getStops(); // DB는 서버 켤 때 만들어지고 실행 중엔 안 바뀌어서 한 번만 읽는다
   const mapInfo = db.getMapInfo();
 
@@ -33,6 +35,20 @@ function createApi({ db, engine }) {
     },
 
     getBuses: () => ({ status: 200, body: engine.getBuses() }),
+
+    // ── 관제 전용 (웹 관제만 씀, 앱은 안 씀. 공통 규약 밖) ──
+    listCalls: () => ({ status: 200, body: engine.listCalls() }),
+    getSim: () => ({ status: 200, body: { simClock: engine.simClock(), speed: sim.speed, busCount: engine.getBuses().length } }),
+    postSpeed(body) {
+      const speed = Number((body || {}).speed);
+      if (!Number.isInteger(speed) || speed < 1 || speed > 60) return { status: 400, body: { error: 'speed는 1~60 정수' } };
+      sim.speed = speed;
+      return { status: 200, body: { speed } };
+    },
+    postReset() {
+      engine.reset();
+      return { status: 200, body: { simClock: engine.simClock() } };
+    },
   };
 }
 

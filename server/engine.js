@@ -35,29 +35,33 @@ function createEngine({ stops, config }) {
   const travelMin = (a, b) => travelTable.get(a + '>' + b);
 
   // ───────── 상태 (서버 메모리) ─────────
-  const state = {
-    simTime: parseClock(config.SIM_START),
-    buses: [],
-    calls: new Map(), // callId → call
-    pending: [], // 아직 버스를 못 잡은 callId (REQUESTED)
-    nextId: 1,
-  };
-
-  for (let i = 0; i < config.BUS_COUNT; i++) {
-    const start = config.BUS_START_STOPS[i % config.BUS_START_STOPS.length];
-    if (!stopById.has(start)) throw new Error(`config.BUS_START_STOPS의 정류장이 stops에 없음: ${start}`);
-    state.buses.push({
-      busId: 'BUS' + (i + 1),
-      status: 'idle', // idle = 정류장에 서 있음, moving = 다음 경유지로 가는 중
-      atStop: start,
-      from: null,
-      to: null,
-      segStart: 0,
-      segEnd: 0,
-      onboard: new Set(), // 타고 있는 callId
-      waypoints: [],
-    });
+  function initialState() {
+    const s = {
+      simTime: parseClock(config.SIM_START),
+      buses: [],
+      calls: new Map(), // callId → call
+      pending: [], // 아직 버스를 못 잡은 callId (REQUESTED)
+      nextId: 1,
+    };
+    for (let i = 0; i < config.BUS_COUNT; i++) {
+      const start = config.BUS_START_STOPS[i % config.BUS_START_STOPS.length];
+      if (!stopById.has(start)) throw new Error(`config.BUS_START_STOPS의 정류장이 stops에 없음: ${start}`);
+      s.buses.push({
+        busId: 'BUS' + (i + 1),
+        status: 'idle', // idle = 정류장에 서 있음, moving = 다음 경유지로 가는 중
+        atStop: start,
+        from: null,
+        to: null,
+        segStart: 0,
+        segEnd: 0,
+        onboard: new Set(), // 타고 있는 callId
+        waypoints: [],
+      });
+    }
+    return s;
   }
+  const state = initialState();
+  const reset = () => Object.assign(state, initialState()); // 관제 "초기화": 01:30, 버스 제자리, 호출 모두 지움
 
   const loadOf = (callIds) => [...callIds].reduce((n, id) => n + state.calls.get(id).partySize, 0);
 
@@ -309,11 +313,35 @@ function createEngine({ stops, config }) {
     return state.buses.map((bus) => ({ ...busInfo(bus), route: bus.waypoints.map(routeStop), path: [] }));
   }
 
+  // 관제 전용: 호출 목록 (최근 것이 앞). 배차 판정 근거(decision)도 같이 준다
+  function listCalls(limit = 50) {
+    return [...state.calls.values()]
+      .sort((a, b) => b.requestTime - a.requestTime || Number(b.callId.slice(2)) - Number(a.callId.slice(2)))
+      .slice(0, limit)
+      .map((c) => {
+        const d = getCallDetail(c.callId);
+        return {
+          callId: c.callId,
+          status: c.status,
+          originId: c.originId,
+          destId: c.destId,
+          partySize: c.partySize,
+          busId: c.busId,
+          requestClock: formatClock(c.requestTime),
+          etaPickupMin: d.etaPickupMin,
+          etaDropoffMin: d.etaDropoffMin,
+          decision: c.lastDecision && { clock: formatClock(c.lastDecision.at), chosen: c.lastDecision.chosen, candidates: c.lastDecision.candidates },
+        };
+      });
+  }
+
   return {
     requestCall,
     tick,
     getCallDetail,
     getBuses,
+    listCalls,
+    reset,
     // 테스트·관제용
     get simTime() {
       return state.simTime;

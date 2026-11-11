@@ -22,7 +22,7 @@ npm start            # 서버 켜기. 끄려면 Ctrl+C
 
 | 어디서 | 주소 |
 | --- | --- |
-| 노트북 브라우저 (웹 관제) | http://localhost:3000/ |
+| 노트북 브라우저 (웹 관제) | http://localhost:3000/ (서버를 켠 뒤 이 주소로 열어야 함. `web/index.html`을 파일로 열면 연결 안 됨) |
 | 안드로이드 에뮬레이터 | `http://10.0.2.2:3000/` (`AppConfig.BASE_URL`) |
 | 같은 와이파이의 실제 폰 | `http://<노트북 IP>:3000/` (PowerShell `ipconfig`의 IPv4 주소, 방화벽에서 Node 허용 필요) |
 | 살아 있는지 확인 | http://localhost:3000/health → `simClock`이 계속 오르면 정상 |
@@ -87,6 +87,15 @@ $env:PORT=3001;    npm start      # 3000번이 이미 쓰이고 있을 때
 - `etaPickupMin`은 `ONBOARD`부터 `null`, `etaDropoffMin`은 `ASSIGNED`·`ONBOARD`일 때만 있다.
 - 버스 위치는 시뮬레이션 값이다. 2초마다 받은 위치 사이를 부드럽게 옮기면 실시간처럼 보인다 (공통 규약 6).
 
+### 관제 전용 API (웹 관제만 씀, 앱은 안 씀)
+
+| API | 하는 일 |
+| --- | --- |
+| `GET /calls` | 호출 목록 (최근 50건, 최근 것이 앞). 각 호출의 배차 판정 근거 `decision.candidates`(버스별 대기·기존 승객 지연·제외 이유) 포함 |
+| `GET /sim` | `{ simClock, speed, busCount }` |
+| `POST /sim/speed` | `{ "speed": 12 }` 배속 바꾸기 (1~60) |
+| `POST /sim/reset` | 01:30으로 되돌리고 호출 모두 지우기 (**앱으로 한 호출도 지워짐**) |
+
 ### PowerShell로 직접 해 보기
 
 ```powershell
@@ -121,7 +130,7 @@ Invoke-RestMethod http://localhost:3000/buses | ConvertTo-Json -Depth 5
 
 ```
 server/
-├─ index.js        Express: API 연결, 웹 관제(../web) 제공, 1초마다 tick, 요청 로그
+├─ index.js        Express: API 연결, 웹 관제(../web: index.html + control.js) 제공, 1초마다 tick, 요청 로그
 ├─ api.js          API 처리 (공통 규약 3)
 ├─ engine.js       배차·이동 엔진 (HTTP와 무관)
 ├─ db.js           SQLite (Node 내장 node:sqlite)
