@@ -3,150 +3,213 @@
     "stopId": "11105",
     "name": "태릉입구역1번출구",
     "lat": 37.6174051,
-    "lng": 127.0743733
+    "lng": 127.0743733,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N13"
+    ]
   },
   {
     "stopId": "07104",
     "name": "먹골역.묵동자이아파트",
     "lat": 37.613835,
-    "lng": 127.077086
+    "lng": 127.077086,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N61"
+    ]
   },
   {
     "stopId": "07107",
     "name": "지하철7호선중화역",
     "lat": 37.6026486,
-    "lng": 127.0791563
+    "lng": 127.0791563,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N61"
+    ]
   },
   {
     "stopId": "07003",
     "name": "상봉역.중랑우체국",
     "lat": 37.5959591,
-    "lng": 127.0837436
+    "lng": 127.0837436,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N26"
+    ]
   },
   {
     "stopId": "07001",
     "name": "망우역",
     "lat": 37.5978284,
-    "lng": 127.0911386
+    "lng": 127.0911386,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N26",
+      "N72"
+    ]
   },
   {
     "stopId": "07440",
     "name": "신내역4번출구",
     "lat": 37.6124792,
-    "lng": 127.1033382
+    "lng": 127.1033382,
+    "kind": "HUB",
+    "nightRoutes": [
+      "N72"
+    ]
   },
   {
     "stopId": "07390",
     "name": "신묵초등학교",
     "lat": 37.6067399,
-    "lng": 127.0767983
+    "lng": 127.0767983,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07521",
     "name": "정신교회",
     "lat": 37.5996555,
-    "lng": 127.0816027
+    "lng": 127.0816027,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07410",
     "name": "신내쌍용아파트",
     "lat": 37.6015382,
-    "lng": 127.0874691
+    "lng": 127.0874691,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07275",
     "name": "신내동성3차아파트",
     "lat": 37.6076432,
-    "lng": 127.0952481
+    "lng": 127.0952481,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07288",
     "name": "신내우체국.5단지두산대림아파트",
     "lat": 37.6165664,
-    "lng": 127.0900173
+    "lng": 127.0900173,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07279",
     "name": "신내8단지아파트.서울의료원",
     "lat": 37.6131149,
-    "lng": 127.0961797
+    "lng": 127.0961797,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07164",
     "name": "우림시장",
     "lat": 37.595398,
-    "lng": 127.09954
+    "lng": 127.09954,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07360",
     "name": "이화미디어고.중랑숲어린이도서관",
     "lat": 37.6031194,
-    "lng": 127.1023247
+    "lng": 127.1023247,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07370",
     "name": "브라운스톤태릉아파트",
     "lat": 37.618176,
-    "lng": 127.0829521
+    "lng": 127.0829521,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07299",
     "name": "새우개마을",
     "lat": 37.6182441,
-    "lng": 127.1033559
+    "lng": 127.1033559,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07407",
     "name": "건영아파트",
     "lat": 37.6023453,
-    "lng": 127.0959547
+    "lng": 127.0959547,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07266",
     "name": "신현중학교",
     "lat": 37.6047917,
-    "lng": 127.0914212
+    "lng": 127.0914212,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07350",
     "name": "먹골파출소.신안아파트입구",
     "lat": 37.614559,
-    "lng": 127.0823393
+    "lng": 127.0823393,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07402",
     "name": "우남푸르미아아파트",
     "lat": 37.606985,
-    "lng": 127.0992198
+    "lng": 127.0992198,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07141",
     "name": "금란교회앞",
     "lat": 37.600352,
-    "lng": 127.104129
+    "lng": 127.104129,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07397",
     "name": "태릉시장입구",
     "lat": 37.5994786,
-    "lng": 127.0780328
+    "lng": 127.0780328,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07316",
     "name": "중화2동체육공원",
     "lat": 37.6003605,
-    "lng": 127.073873
+    "lng": 127.073873,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07385",
     "name": "묵2동주민센터",
     "lat": 37.6098947,
-    "lng": 127.0760355
+    "lng": 127.0760355,
+    "kind": "HOME",
+    "nightRoutes": []
   },
   {
     "stopId": "07430",
     "name": "태릉고등학교.원묵초등학교",
     "lat": 37.6182946,
-    "lng": 127.0872444
+    "lng": 127.0872444,
+    "kind": "HOME",
+    "nightRoutes": []
   }
 ]

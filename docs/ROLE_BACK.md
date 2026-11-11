@@ -24,7 +24,7 @@
   - `server/data/area.json`: 시범지역 사각형(north·south·west·east — 북서 태릉입구역 · 북동 봉화산역·신내역 · 남서 상봉역 · 남동 망우역·우림시장)과 시범 정류장 ID 목록(`hubStopIds` 승차 거점 6개 = N버스 서는 역 앞, `homeStopIds` 주거지 19개). 정류장과 지도가 이 범위 하나를 같이 쓴다
   - 노선별 정류소 파일에서 노선명이 N으로 시작하는 심야버스를 골라 정류장마다 `nightRoutes`로 붙인다. 이 범위에는 N13·N26·N61·N72가 지난다. 승차 거점에 N버스가 안 서면 경고
   - `npm run collect`(`server/scripts/collect.js`) 한 번으로 정류장과 지도를 같이 만든다
-  - 정류장: `server/data/raw/`의 정류소 위치정보 파일을 읽어 사각형 안 정류소만 `server/data/stops-all.json`으로 뽑는다. 정류소번호(ARS-ID)는 5자리 문자열로 맞추고(앞자리 0이 빠진 4자리면 0을 붙임), 좌표는 WGS84 위도·경도 그대로. 그중 `area.json`에 적은 시범 정류장 25개(승차 거점 6 → 주거지 19 순, 서로 300m 이상 떨어지게)만 `server/data/stops.json`으로
+  - 정류장: `server/data/raw/`의 정류소 위치정보 파일을 읽어 사각형 안 정류소만 `server/data/stops-all.json`으로 뽑는다. 정류소번호(ARS-ID)는 5자리 문자열로 맞추고(앞자리 0이 빠진 4자리면 0을 붙임), 좌표는 WGS84 위도·경도 그대로. 그중 `area.json`에 적은 시범 정류장 25개(승차 거점 6 → 주거지 19 순, 서로 300m 이상 떨어지게)만 `server/data/stops.json`으로. `stops.json`은 공통 규약 `Stop` 형식 그대로(`kind` = HUB/HOME, `nightRoutes` 포함)
   - 지도: 같은 사각형의 OSM 지도 데이터(도로·철도·공원·물·건물)를 Overpass API로 한 번 받아 `server/data/raw/osm-area.json`에 두고, 그걸로 다크 테마 지도를 직접 그려 `server/data/map.png`(2400×2306px)와 `server/data/map.json`(`MapInfo`: 범위 4개 = area.json 그대로, 이미지 크기, 출처)으로 저장. OSM 타일 서버 그림을 미리 받아 두는 건 이용 정책상 금지라 쓰지 않는다. 받아 둔 데이터가 있으면 다시 받지 않는다 (`npm run collect:refresh`로 새로 받기)
   - 확인용 `server/data/map-check.png`: 지도 위에 범위 안 정류장(회색, N버스 서는 곳은 하늘색)과 시범 정류장(파랑 = 승차 거점, 노랑 = 주거지, 옆 숫자 = 순번)을 찍은 그림
   - `raw/` 원본, `stops.json`, `map.json`, `map.png`는 커밋한다 (프론트가 수집 없이 서버를 켤 수 있게). 서버는 시작할 때 SQLite DB(`stops`, `map_info`)가 없으면 이 파일들로 만든다. DB 파일은 커밋하지 않는다
@@ -49,7 +49,7 @@
 ### 2주차 (11/19~11/27)
 
 - [ ] **B6. 관제 화면을 서버에 연결 (2~3h)**
-  - 웹 시뮬레이터 화면을 바탕으로, 자체 `tick`·배차 대신 1~2초마다 `GET /buses`로 받아서 그림. 호출 칸과 버튼은 `POST /calls`, 정류장은 `/stops`에서, 지도 중심은 시범지역 가운데(봉화산 근처)
+  - 웹 시뮬레이터 화면을 바탕으로, 자체 `tick`·배차 대신 1~2초마다 `GET /buses`로 받아서 그림. 호출 칸과 버튼은 `POST /calls`, 정류장은 `/stops`에서, 지도 중심은 시범지역 가운데(봉화산 근처). 정류장 마커는 승차 거점 파랑·주거지 주황, 범례 박스, 마커를 클릭하면 팝업(이름, 번호, 구분, 서는 N버스)
   - 완료 기준: 웹에서 호출 → 서버 배차 → 버스 이동이 보이고, 같은 방향 호출은 합승으로 묶임
 - [ ] **B7. 도로 좌표 (3~4h)** — 교수님: "GIS 좌표로 노선을 내려주면 그 자리에 점만 찍으면 된다"
   - 정류장 쌍마다 카카오모빌리티 길찾기 API로 도로 경로 좌표를 **한 번만** 받아 `server/data/paths.json`에 저장 (REST 키는 `.env`)

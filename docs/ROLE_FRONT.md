@@ -32,11 +32,11 @@
   - `DalmuriApp`(Application)에 간단한 컨테이너: API, 저장소를 여기서 꺼내 씀
 - [ ] **F3. 서버 연결부 (2~3h)**
   - `DalmuriApi`: Retrofit 인터페이스 (`GET /stops`, `GET /map`, `GET /map/image`(파일 다운로드), `POST /calls`, `GET /calls/{callId}`)
-  - `FakeDalmuriApi`: 같은 인터페이스를 메모리로 구현. 정류장 몇 개, 지도 정보(이미지는 임시 그림이나 회색), 호출하면 시간이 지나며 `REQUESTED → ASSIGNED → ONBOARD → COMPLETED`, 버스 좌표가 조금씩 이동, 합승 확인용으로 가끔 `route`에 다른 `callId` 섞기
+  - `FakeDalmuriApi`: 같은 인터페이스를 메모리로 구현. 정류장 몇 개(`HUB`·`HOME` 섞어서, 실제 `server/data/stops.json`을 복사해 써도 됨), 지도 정보(이미지는 임시 그림이나 회색), 호출하면 시간이 지나며 `REQUESTED → ASSIGNED → ONBOARD → COMPLETED`, 버스 좌표가 조금씩 이동, 합승 확인용으로 가끔 `route`에 다른 `callId` 섞기
   - `AppConfig.USE_FAKE_SERVER`, `AppConfig.BASE_URL = "http://10.0.2.2:3000/"`
   - 완료 기준: Fake로 호출하면 상태가 순서대로 바뀌는 게 Logcat에 찍힘
 - [ ] **F4. 처음 실행 때 데이터 받아 저장 (2~3h)** — 교수님: "서버와 같은 구조로 Room에, 처음 뜰 때 받고 있으면 안 받음"
-  - Room: `StopEntity`(`stops`), `MapInfoEntity`(`map_info`), DAO, `AppDatabase`
+  - Room: `StopEntity`(`stops`), `MapInfoEntity`(`map_info`), DAO, `AppDatabase`. `Stop.nightRoutes`(List)는 TypeConverter로 `"N26,N72"` 문자열 저장, `kind`는 enum 이름 그대로
   - `MapRepository`: Room에 지도 정보가 없으면 `GET /map` + 이미지를 받아 `map_<mapId>.png`로 저장, 있으면 저장된 것만 사용. `StopRepository`도 같은 방식
   - 완료 기준: 두 번째 실행부터는 서버(또는 Fake)를 꺼도 정류장과 지도 이미지가 나옴
 
@@ -44,12 +44,14 @@
 
 - [ ] **F5. 지도 화면 (4~5h)** — 교수님: "지도 레이아웃 하나 + 그 위에 겹쳐서 점을 찍는다"
   - `ui/map/MapLayer.kt`: `Box` 안에 아래 `Image`(저장된 지도) + 위 `Canvas`(정류장 점, 선택된 출발·도착 강조, 버스 🚌, 노선선)
+  - 정류장 점 색: `kind = HUB`(승차 거점)는 파랑, `HOME`(주거지)은 주황(달빛 골드). 지도 구석에 범례 카드: "● 승차 거점 — 심야 N버스에서 내려 타는 곳", "● 주거지 — 집 근처 하차"
   - 위도·경도 → 픽셀 변환은 공통 규약 5의 식. 단위 테스트 하나 붙이기 (모서리 좌표가 이미지 모서리로 가는지)
   - 노선선: `path`가 비어 있으면 버스 위치 → `route` 정류장들을 직선으로, 있으면 `path` 그대로
   - 핀치 줌·드래그 이동, 점을 누르면 정류장 선택 (탭 위치 → 가장 가까운 정류장), 구석에 `attribution` 글자
   - 완료 기준: Fake 데이터로 지도 위에 정류장·버스·노선이 맞는 자리에 보이고, 줌해도 같이 따라감
 - [ ] **F6. 호출 화면 (3h)**
-  - 지도에서 정류장을 눌러 출발 → 도착 순서로 선택 (하단 시트 목록으로도), 같은 정류장 막기, 다시 고르기
+  - 정류장 점을 누르면 하단 카드에 정류장 정보: 이름, 번호(`stopId`), 구분(승차 거점 / 주거지), 서는 N버스(`nightRoutes`, 승차 거점만), 버튼 [여기서 출발] [여기로 도착]
+  - 그 버튼이나 하단 시트 목록으로 출발 → 도착 선택, 같은 정류장 막기, 다시 고르기
   - 탑승 인원 1~3명 선택 → [호출] → `POST /calls` → 받은 `callId`(배차 ID) 저장
 - [ ] **F7. 상태 하단 시트 + 주기 조회 (3~4h)** — 교수님: "배차 ID로 예를 들면 10초에 한 번씩 요청해서 지도에 출력" (팀 결정으로 2초)
   - `TripViewModel`: `callId`가 생기면 `POLL_MS`마다 `GET /calls/{callId}` (코루틴 루프, `COMPLETED`·`REJECTED`면 멈춤, 화면 꺼지면 멈춤) → `StateFlow<CallDetail?>`

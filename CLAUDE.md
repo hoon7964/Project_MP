@@ -35,7 +35,7 @@
   - **서버 (백)**: 합승·최적 배차, 버스 이동 시뮬레이션, 데이터 수집, API. 친구가 만든 웹 시뮬레이터는 **참고용**이고, 서버는 우리 구조에 맞게 새로 만든다.
   - **웹 관제**: 친구 웹을 참고한 관제 화면. 서버 상태를 받아서 그린다. 서버가 같은 주소로 띄워준다.
 - **정류장과 지도는 미리 받아 서버 DB에 저장한다.** 서버의 수집 스크립트(`npm run collect`)가 개발할 때 한 번, 서울 열린데이터광장 "서울시 버스정류소 위치정보" 파일(인증키 불필요)에서 시범지역 사각형 안의 정류소만 뽑고, 같은 사각형의 OpenStreetMap 지도 데이터(Overpass API)로 지도 이미지를 직접 그린다 (OSM 타일 서버의 그림을 미리 받아 두는 건 이용 정책상 금지라서 쓰지 않음). 결과(`stops.json`, `map.json`, `map.png`)는 커밋하고, 서버는 시작할 때 이것으로 DB를 만든다.
-- **시범 정류장 = 승차 거점 + 주거지.** 승차 거점은 심야 N버스(N13·N26·N61·N72)가 서는 역 앞 정류장 6개, 주거지는 N버스가 안 서는 아파트·학교·주택가 정류장 19개다 (`server/data/area.json`). 서는 N버스는 "서울시 버스노선별 정류소 정보" 파일로 확인한다. API의 `Stop`은 그대로이고(구분 필드 없음), `stops.json`에 승차 거점이 앞에 온다. 앱이 출발지를 거점으로 제한하지는 않는다.
+- **시범 정류장 = 승차 거점 + 주거지.** 승차 거점은 심야 N버스(N13·N26·N61·N72)가 서는 역 앞 정류장 6개, 주거지는 N버스가 안 서는 아파트·학교·주택가 정류장 19개다 (`server/data/area.json`). 서는 N버스는 "서울시 버스노선별 정류소 정보" 파일로 확인한다. `Stop`의 `kind`(`HUB` = 승차 거점, `HOME` = 주거지)와 `nightRoutes`(서는 N버스)로 구분하고, `stops.json`에 승차 거점이 앞에 온다 (11/12 재열·정훈 합의). 지도에서 승차 거점은 파랑, 주거지는 주황(골드)으로 그리고 범례를 둔다. 앱이 출발지를 거점으로 제한하지는 않는다.
 - 앱은 실행 중에 우리 서버(와 Firebase 로그인)만 부르고, **처음 실행할 때 서버에서 받아 같은 구조로 Room에 저장**한다. 이미 있으면 다시 받지 않는다.
 - **지도 화면 = 레이어 두 장**: 아래는 서버에서 받아 둔 지도 이미지, 위는 정류장·버스(🚌)·노선을 찍는 그리기 레이어.
 - 버스 위치는 "가짜"가 아니라 **"시뮬레이션"** 데이터다 (일정 속도로 이동한다고 가정).
@@ -75,8 +75,9 @@
 | `GET /buses` | 전체 버스 상태 (웹 관제용) | 없음 | `BusState` 배열 |
 
 ```json
-// GET /stops 의 원소 (값은 예시)
-{ "stopId": "07101", "name": "신내역", "lat": 37.6128, "lng": 127.1032 }
+// GET /stops 의 원소 (server/data/stops.json 실제 값)
+{ "stopId": "07001", "name": "망우역", "lat": 37.5978284, "lng": 127.0911386, "kind": "HUB", "nightRoutes": ["N26", "N72"] }
+{ "stopId": "07275", "name": "신내동성3차아파트", "lat": 37.6076432, "lng": 127.0952481, "kind": "HOME", "nightRoutes": [] }
 
 // GET /map (server/data/map.json 실제 값. 범위는 area.json에서 옴)
 { "mapId": "bonghwasan-v1", "imageUrl": "/map/image", "widthPx": 2400, "heightPx": 2306,
@@ -106,6 +107,7 @@
 
 **규칙**
 
+- `kind`는 `HUB`(승차 거점: N버스에서 내려 타는 역 앞, 파랑) 또는 `HOME`(주거지: 집 근처 하차, 주황). `nightRoutes`는 그 정류장에 서는 심야 N버스 노선 이름 목록이고 `HOME`은 `[]`.
 - `callId`가 교수님이 말한 "배차 ID"다.
 - `status`는 5개: `REQUESTED`(빈 버스 찾는 중) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 최대 대기 15분 안에 못 잡으면 `REJECTED`.
 - `REQUESTED`·`REJECTED`·`COMPLETED`일 때 `bus`는 `null`, `route`·`path`는 `[]`, ETA는 `null`. `ONBOARD`일 때 `etaPickupMin`은 `null`.
@@ -121,7 +123,12 @@
 프론트가 1주차 첫 작업(F0)에서 이대로 만든다. 서버 JSON과 이름이 같아야 Gson이 그대로 읽는다.
 
 ```kotlin
-data class Stop(val stopId: String, val name: String, val lat: Double, val lng: Double)
+enum class StopKind { HUB, HOME }   // HUB = 승차 거점(파랑), HOME = 주거지(주황)
+
+data class Stop(
+    val stopId: String, val name: String, val lat: Double, val lng: Double,
+    val kind: StopKind, val nightRoutes: List<String>,
+)
 
 data class MapInfo(
     val mapId: String, val imageUrl: String, val widthPx: Int, val heightPx: Int,
@@ -152,7 +159,7 @@ data class CallDetail(
 )
 ```
 
-Room 테이블: `stops`(`Stop`과 같은 컬럼, `stopId` 기본키), `map_info`(`MapInfo`와 같은 컬럼, `mapId` 기본키). 지도 이미지는 앱 내부 저장소 파일 `map_<mapId>.png`.
+Room 테이블: `stops`(`Stop`과 같은 컬럼, `stopId` 기본키. `kind`는 문자열, `nightRoutes`는 TypeConverter로 `"N26,N72"` 같은 문자열로 저장), `map_info`(`MapInfo`와 같은 컬럼, `mapId` 기본키). 지도 이미지는 앱 내부 저장소 파일 `map_<mapId>.png`.
 
 ## 5. 지도 좌표 → 화면 위치
 

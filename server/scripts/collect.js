@@ -9,7 +9,7 @@
 //   data/raw/서울시버스노선별정류소정보(*).xlsx     서울 열린데이터광장 OA-1095 (정류장마다 서는 N버스 노선을 알아냄)
 // 출력
 //   data/stops-all.json   범위 안의 모든 정류소 + 서는 N버스 노선 (시범 정류장 고를 때 참고용)
-//   data/stops.json       시범 정류장만 (GET /stops 로 나가는 데이터, 공통 규약 Stop 형식). 승차 거점이 앞, 주거지가 뒤
+//   data/stops.json       시범 정류장만 (GET /stops 로 나가는 데이터, 공통 규약 Stop 형식: kind·nightRoutes 포함). 승차 거점이 앞, 주거지가 뒤
 //   data/raw/osm-area.json  Overpass API로 받은 OSM 원본 데이터 (한 번 받으면 재사용)
 //   data/map.png          지도 이미지 (GET /map/image)
 //   data/map.json         지도 정보 (GET /map, 공통 규약 MapInfo 형식)
@@ -154,7 +154,9 @@ function collectStops(area) {
   const hubs = hubIds.map((id) => byId.get(id));
   const homes = homeIds.map((id) => byId.get(id));
   const pilots = [...hubs, ...homes];
-  const stops = pilots.map(({ stopId, name, lat, lng }) => ({ stopId, name, lat, lng })); // 공통 규약 Stop 형식 그대로
+  // 공통 규약 Stop 형식 그대로: kind = HUB(승차 거점, 파랑) / HOME(주거지, 주황), nightRoutes = 서는 N버스
+  const toStop = (kind) => ({ stopId, name, lat, lng, nightRoutes }) => ({ stopId, name, lat, lng, kind, nightRoutes });
+  const stops = [...hubs.map(toStop('HUB')), ...homes.map(toStop('HOME'))];
   writeJson(path.join(DATA, 'stops.json'), stops);
 
   const warnings = [];
