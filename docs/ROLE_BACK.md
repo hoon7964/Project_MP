@@ -40,12 +40,12 @@
   - 웹은 호출 1건 = 1명으로 셌다. 서버는 호출마다 `partySize`를 저장하고 정원 비교를 **탑승 중인 호출들의 인원 합**으로 한다
   - `setInterval`로 1초마다 `tick`. 배속 기본 6 (실제 1초 = 시뮬 6초), 설정 값 하나로 조절
   - 끝난 호출(하차·배차 실패)은 지우지 않고 남겨서 앱이 `COMPLETED`·`REJECTED`를 받을 수 있게
-- [ ] **B4. API (2h)**
+- [x] **B4. API (2h)**
   - 공통 규약 3 그대로: `/stops`, `/map`, `/map/image`, `POST /calls`, `/calls/{callId}`, `/buses`. `callId`는 `"c-1"`, `"c-2"`…, 404·400 처리, `path`는 일단 `[]`
   - `express.static`으로 `../web` 폴더를 같이 띄움 → 웹 관제 주소 `http://localhost:3000/`
   - 완료 기준 (11/20): 브라우저에서 `/stops`, `/map`, `/map/image`, `/buses`가 보이고, PowerShell에서 `POST /calls`를 보내면 `callId`가 돌아오고, `/calls/{callId}`가 시간이 지나며 바뀜
   - 구현: `server/api.js`(라우트 처리, Express와 분리) + `server/index.js`(Express 연결, 요청 로그, 깨진 JSON 400). 확인: 서버 켜 둔 채 다른 창에서 `npm run test:api`
-- [ ] **B4-1. README + 프론트에게 넘기기 (1h, 11/20)**
+- [x] **B4-1. README + 프론트에게 넘기기 (1h, 11/20)** — `server/README.md` (11/12)
   - `server/README.md`: 설치·실행법(`npm install`, 데이터는 커밋돼 있어 수집 없이 실행 가능 (다시 수집할 때만 `npm run collect`), `npm start`), API 목록, **합승 끼워넣기가 어떻게 도는지** 짧은 설명(발표 때도 씀)
   - push 후 프론트에게 카톡
 
