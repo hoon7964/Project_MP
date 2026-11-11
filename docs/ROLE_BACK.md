@@ -27,15 +27,16 @@
   - 정류장: `server/data/raw/`의 정류소 위치정보 파일을 읽어 사각형 안 정류소만 `server/data/stops-all.json`으로 뽑는다. 정류소번호(ARS-ID)는 5자리 문자열로 맞추고(앞자리 0이 빠진 4자리면 0을 붙임), 좌표는 WGS84 위도·경도 그대로. 그중 `area.json`에 적은 시범 정류장 25개(승차 거점 6 → 주거지 19 순, 서로 300m 이상 떨어지게)만 `server/data/stops.json`으로. `stops.json`은 공통 규약 `Stop` 형식 그대로(`kind` = HUB/HOME, `nightRoutes` 포함)
   - 지도: 같은 사각형의 OSM 지도 데이터(도로·철도·공원·물·건물)를 Overpass API로 한 번 받아 `server/data/raw/osm-area.json`에 두고, 그걸로 다크 테마 지도를 직접 그려 `server/data/map.png`(2400×2306px)와 `server/data/map.json`(`MapInfo`: 범위 4개 = area.json 그대로, 이미지 크기, 출처)으로 저장. OSM 타일 서버 그림을 미리 받아 두는 건 이용 정책상 금지라 쓰지 않는다. 받아 둔 데이터가 있으면 다시 받지 않는다 (`npm run collect:refresh`로 새로 받기)
   - 확인용 `server/data/map-check.png`: 지도 위에 범위 안 정류장(회색, N버스 서는 곳은 하늘색)과 시범 정류장(파랑 = 승차 거점, 노랑 = 주거지, 옆 숫자 = 순번)을 찍은 그림
-  - `raw/` 원본, `stops.json`, `map.json`, `map.png`는 커밋한다 (프론트가 수집 없이 서버를 켤 수 있게). 서버는 시작할 때 SQLite DB(`stops`, `map_info`)가 없으면 이 파일들로 만든다. DB 파일은 커밋하지 않는다
+  - `raw/` 원본, `stops.json`, `map.json`, `map.png`는 커밋한다 (프론트가 수집 없이 서버를 켤 수 있게). 서버는 켤 때마다 이 파일들로 SQLite DB(`stops`, `map_info`)를 새로 만든다 (`db.js`, Node 내장 `node:sqlite`). DB 파일은 커밋하지 않는다
   - 완료 기준: `npm run collect` 후 `stops.json` 좌표가 위도 37.x / 경도 127.x이고, 정류장 몇 개를 공통 규약 5의 식으로 픽셀로 바꿔 `map.png`에 찍었을 때 실제 자리와 맞음
-- [ ] **B2. 서버 뼈대 + 배차 엔진 작성 (4~5h)**
+- [x] **B2. 서버 뼈대 + 배차 엔진 작성 (4~5h)** — `npm run test:engine`으로 확인 (시연 시나리오 + 무작위 호출 제약 검사)
   - 설계: `server/DESIGN.md` (웹에서 그대로 가져올 것 / 바꿀 것 11가지, 파일 구조, 함수, 상태 대응)
   - `server/package.json`, `server/index.js`(Express, 포트 3000, `0.0.0.0`에서 대기), `server/engine.js`(배차·시뮬레이션), `server/db.js`(SQLite)
   - 상태(버스, 승객, 시뮬 시각)는 서버 메모리에, 정류장·지도 정보는 DB에서 읽음. 버스 시작 위치는 시범 정류장 중에서, 버스 대수는 설정값으로
   - 배차는 웹 시뮬레이터의 끼워넣기 방식을 참고 (모든 버스 × 승차·하차 위치 조합을 넣어 보고, 제약을 지키면서 가장 좋은 걸 고름). 제약값은 공통 규약 6 기준: 최대 대기 15분, 기존 승객 지연 5분(웹은 8분), 정원 6명
   - 완료 기준: 테스트 스크립트로 호출을 몇 번 넣으면 배정된 버스와 노선이 출력됨
-- [ ] **B3. 탑승 인원 + 서버 시계 (2h)**
+  - 버스 시작: 태릉입구역1번출구·망우역·신내역4번출구 (`config.js`). DB는 Node 내장 SQLite라 Node 22.13 이상 필요
+- [x] **B3. 탑승 인원 + 서버 시계 (2h)** — B2와 같이 끝냄 (`engine.js`의 인원 합 정원, `index.js`의 1초 tick, 끝난 호출 보관)
   - 웹은 호출 1건 = 1명으로 셌다. 서버는 호출마다 `partySize`를 저장하고 정원 비교를 **탑승 중인 호출들의 인원 합**으로 한다
   - `setInterval`로 1초마다 `tick`. 배속 기본 6 (실제 1초 = 시뮬 6초), 설정 값 하나로 조절
   - 끝난 호출(하차·배차 실패)은 지우지 않고 남겨서 앱이 `COMPLETED`·`REJECTED`를 받을 수 있게

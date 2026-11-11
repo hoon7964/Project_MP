@@ -1049,8 +1049,8 @@
         <div class="legend-items">
           <div class="legend-item"><span class="dot" style="background: #3d8bff;"></span> 승차 거점 (N버스 하차 역 앞)</div>
           <div class="legend-item"><span class="dot" style="background: #f2a93b;"></span> 주거지 정류장 (집 근처 하차)</div>
-          <div class="legend-item"><span class="dot" style="background: var(--brand-cyan);"></span> 1호차 (상봉역)</div>
-          <div class="legend-item"><span class="dot" style="background: #ec4899;"></span> 2호차 (먹골역)</div>
+          <div class="legend-item"><span class="dot" style="background: var(--brand-cyan);"></span> 1호차 (태릉입구역)</div>
+          <div class="legend-item"><span class="dot" style="background: #ec4899;"></span> 2호차 (망우역)</div>
           <div class="legend-item"><span class="dot" style="background: var(--brand-purple);"></span> 3호차 (신내역)</div>
         </div>
         <div style="color: var(--text-muted); font-size: 11px;">
@@ -1111,7 +1111,7 @@
             <span>●</span> 중랑구 봉화산 일대 3대 통합 배차 관제 방송
           </div>
           <div class="status-broadcast-msg" id="liveBroadcastMsg">
-            달무리버스 3대(1·2·3호차)가 상봉역·먹골역·신내역에서 대기 중입니다.
+            달무리버스 3대(1·2·3호차)가 태릉입구역·망우역·신내역에서 대기 중입니다.
           </div>
         </div>
 
@@ -1166,8 +1166,8 @@ const STOPS = [
 
 /* ================= 3 BUSES CONFIGURATION ================= */
 const BUSES_CONFIG = [
-  { id: 'BUS1', name: '1호차', color: '#00e5cc', tagBg: '#00e5cc', tagColor: '#04211d', initialStop: '07003' }, // 상봉역.중랑우체국 (N26)
-  { id: 'BUS2', name: '2호차', color: '#ec4899', tagBg: '#ec4899', tagColor: '#ffffff', initialStop: '07104' }, // 먹골역 (N61)
+  { id: 'BUS1', name: '1호차', color: '#00e5cc', tagBg: '#00e5cc', tagColor: '#04211d', initialStop: '11105' }, // 태릉입구역1번출구 (N13)
+  { id: 'BUS2', name: '2호차', color: '#ec4899', tagBg: '#ec4899', tagColor: '#ffffff', initialStop: '07001' }, // 망우역 (N26·N72)
   { id: 'BUS3', name: '3호차', color: '#a855f7', tagBg: '#a855f7', tagColor: '#ffffff', initialStop: '07440' }  // 신내역4번출구 (N72)
 ];
 
@@ -1234,7 +1234,7 @@ function freshState(){
     passengers: {},
     pending: [],
     nextPaxId: 1,
-    broadcast: '달무리버스 3대(1·2·3호차)가 상봉역·먹골역·신내역에서 대기 중입니다.',
+    broadcast: '달무리버스 3대(1·2·3호차)가 태릉입구역·망우역·신내역에서 대기 중입니다.',
   };
 }
 
@@ -1647,7 +1647,7 @@ function init(){
   state = freshState();
   populateSelects();
   setupSpeedButtons();
-  setBroadcast('달무리버스 3대(1·2·3호차)가 승차 거점(상봉역·먹골역·신내역)에서 대기 중입니다.');
+  setBroadcast('달무리버스 3대(1·2·3호차)가 승차 거점(태릉입구역·망우역·신내역)에서 대기 중입니다.');
   render();
 }
 
