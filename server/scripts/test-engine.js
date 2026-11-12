@@ -147,6 +147,25 @@ console.log('\n1) 시연 시나리오');
   check(e.getCallDetail('c-999') === null, '없는 callId는 null(404)');
 }
 
+// ───────── 1-1) 운행 시간 (05:00 끝) ─────────
+console.log('\n1-1) 운행 시간');
+{
+  const e = createEngine({ stops, config, paths });
+  run(e, 209.5); // 01:30 + 209.5분 = 04:59:30
+  const last = e.requestCall({ originId: '07003', destId: '07275', partySize: 1 });
+  check(last.ok && e.inService(), `${e.simClock()} 호출은 받아야 함`);
+  run(e, 1);
+  const late = e.requestCall({ originId: '07003', destId: '07275', partySize: 1 });
+  console.log(`  ${e.simClock()} 호출 → ${late.ok ? '받음' : '거절: ' + late.error}`);
+  check(!late.ok && !e.inService(), '05:00이 지나면 새 호출은 거절해야 함');
+  run(e, 20);
+  const c = e._state.calls.get(last.response.callId);
+  console.log(`  04:59 호출 승객: ${c.status}, ${formatClock(c.droppedAt)} 하차`);
+  check(c.status === 'COMPLETED', '운행 끝 전에 잡은 승객은 끝까지 태워 줘야 함');
+  e.reset();
+  check(e.inService() && e.requestCall({ originId: '07003', destId: '07275', partySize: 1 }).ok, '처음부터 다시 → 01:30부터 다시 호출 가능');
+}
+
 // ───────── 2) 무작위 부하 테스트 ─────────
 console.log('\n2) 무작위 호출 테스트 (제약 검사)');
 {

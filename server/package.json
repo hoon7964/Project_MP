@@ -15,7 +15,10 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@fontsource/gowun-batang": "^5.0.0",
+    "@fontsource/ibm-plex-sans-kr": "^5.0.0",
     "express": "^5.1.0",
+    "leaflet": "1.9.4",
     "sharp": "^0.35.4"
   }
 }

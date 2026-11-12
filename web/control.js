@@ -186,15 +186,16 @@ function animate(now) {
 }
 
 /* ================= 그리기 ================= */
-function renderClock(clock) {
+// inService = 서버 GET /sim 값. 05:00이 지나 시각이 한 바퀴 돌아도(서버를 오래 켜 둔 경우) "운행 끝"으로 보이게 서버 값을 따른다
+function renderClock(clock, inService = true) {
   simClock = clock;
   $('clockVal').textContent = clock;
   const [h, m] = clock.split(':').map(Number);
   const min = h >= 12 ? 0 : h * 60 + m; // 자정 전은 0으로
-  const progress = Math.min(1, min / 300); // 00:00~05:00
+  const progress = inService ? Math.min(1, min / 300) : 1; // 00:00~05:00
   $('nightArc').setAttribute('stroke-dashoffset', (119.38 * (1 - progress)).toFixed(2));
   const left = Math.max(0, 300 - min);
-  $('nightLeft').textContent = left ? `운행 끝(05:00)까지 ${Math.floor(left / 60)}시간 ${left % 60}분` : '운행 시간 끝';
+  $('nightLeft').textContent = inService && left ? `운행 끝(05:00)까지 ${Math.floor(left / 60)}시간 ${left % 60}분` : '운행 끝, 새 호출 안 받음';
 }
 
 function renderBuses(buses) {
@@ -282,10 +283,15 @@ function renderCalls(calls) {
   renderJudge(calls);
 }
 
+const JUDGE_EMPTY = '<p class="empty">호출하면 버스마다 기다리는 시간과 이미 탄 승객이 늦어지는 시간을 비교해서 여기에 보여 줘요.</p>';
+
 // 가장 최근 호출의 배차 판정: 버스마다 최선의 끼워넣기 결과와 제외 이유
 function renderJudge(calls) {
   const c = calls.find((x) => x.decision);
-  if (!c) return;
+  if (!c) {
+    $('judge').innerHTML = JUDGE_EMPTY;
+    return;
+  }
   const d = c.decision;
   const rows = d.candidates
     .map((x) => {
@@ -322,11 +328,24 @@ function announce(calls) {
 
 /* ================= 서버에서 받기 ================= */
 let offline = false;
+let polling = false;
+let lastCallCount = 0;
+// 서버가 초기화되면(다른 관제 창에서 해도) 호출 목록이 비워진다 → 이 화면이 붙인 이름·상태 기억도 지움
+// (서버를 껐다 켜면 callId가 c-1부터 다시 시작해서, 지우지 않으면 예전 이름이 새 호출에 붙을 수 있음)
+function forgetCalls() {
+  for (const k of Object.keys(labels)) delete labels[k];
+  for (const k of Object.keys(lastStatus)) delete lastStatus[k];
+}
 async function poll() {
+  if (polling) return; // 응답이 1초보다 늦으면 겹쳐 부르지 않음
+  polling = true;
   try {
     const [simInfo, buses, calls] = await Promise.all([api('GET', '/sim'), api('GET', '/buses'), api('GET', '/calls')]);
-    renderClock(simInfo.simClock);
+    if (calls.length < lastCallCount) forgetCalls();
+    lastCallCount = calls.length;
+    renderClock(simInfo.simClock, simInfo.inService !== false);
     markSpeed(simInfo.speed);
+    renderService(simInfo.inService !== false);
     renderBuses(buses);
     renderCalls(calls);
     if (offline) broadcast('서버에 다시 연결됨');
@@ -335,6 +354,21 @@ async function poll() {
   } catch (e) {
     if (!offline) broadcast(`서버 응답 없음 (${e.message}). 서버 창에서 npm start가 켜져 있는지 확인`);
     offline = true;
+  } finally {
+    polling = false;
+  }
+}
+
+// 05:00 운행이 끝나면 호출 버튼을 잠그고 안내 (서버도 새 호출을 400으로 거절). 처음부터 다시 → 다시 열림
+let serviceOn = true;
+function renderService(on) {
+  if (on === serviceOn) return;
+  serviceOn = on;
+  for (const id of ['callBtn', 'personaBtn', 'demoBtn']) $(id).disabled = !on;
+  if (on) formMsg('01:30부터 다시 운행해요. 호출할 수 있어요.');
+  else {
+    formMsg('05:00에 운행이 끝나서 새 호출은 받지 않아요. 이미 탄 승객은 끝까지 내려 줘요. "처음부터 다시"를 누르면 01:30부터 다시 시작해요.', true);
+    broadcast('05:00 운행 끝. 남은 승객만 내려 주는 중');
   }
 }
 
@@ -417,7 +451,7 @@ async function start() {
     return;
   }
   if (!window.L) {
-    broadcast('지도 라이브러리(Leaflet)를 불러오지 못했어요. 인터넷 연결을 확인하세요.');
+    broadcast('지도 라이브러리(Leaflet)를 불러오지 못했어요. 서버를 끄고 server 폴더에서 npm install 한 뒤 다시 켜세요.');
     return;
   }
   let simInfo;
@@ -434,12 +468,15 @@ async function start() {
   setupSpeedButtons();
   setupParty();
   renderLegendBuses(simInfo.busCount);
+  // 기본 설정(버스 3대)일 때만 시작 정류장 이름을 말한다 (BUS_COUNT를 바꾸면 일반 문구)
+  const startMsg =
+    simInfo.busCount === 3 ? '버스 3대가 태릉입구역, 망우역, 신내역에서 기다리는 중' : `버스 ${simInfo.busCount}대가 시작 정류장에서 기다리는 중`;
 
   $('callBtn').onclick = async () => {
     const btn = $('callBtn');
     btn.disabled = true;
     await call($('originSel').value, $('destSel').value, partySize);
-    btn.disabled = false;
+    btn.disabled = !serviceOn;
   };
   $('personaBtn').onclick = () => call('07003', '07275', 1, '페르소나 (신내동 23세)');
   // 승차 거점(N버스 하차) → 주거지로 가는 호출 3건을 무작위로 (1~3명씩)
@@ -452,15 +489,20 @@ async function start() {
   };
   $('resetBtn').onclick = async () => {
     if (!confirm('서버 시뮬레이션을 01:30으로 되돌리고 모든 호출을 지울까요? (앱으로 한 호출도 지워져요)')) return;
-    await api('POST', '/sim/reset');
-    for (const k of Object.keys(lastStatus)) delete lastStatus[k];
-    $('judge').innerHTML = '<p class="empty">호출하면 버스마다 기다리는 시간과 이미 탄 승객이 늦어지는 시간을 비교해서 여기에 보여 줘요.</p>';
+    try {
+      await api('POST', '/sim/reset');
+    } catch (e) {
+      broadcast(`되돌리지 못함 (${e.message}). 서버 창에서 npm start가 켜져 있는지 확인`);
+      return;
+    }
+    forgetCalls();
+    $('judge').innerHTML = JUDGE_EMPTY;
     await poll();
-    broadcast('처음으로 되돌림. 버스 3대가 태릉입구역, 망우역, 신내역에서 기다리는 중');
+    broadcast(`처음으로 되돌림. ${startMsg}`);
   };
 
   await poll();
-  broadcast('서버에 연결됨. 버스 3대가 태릉입구역, 망우역, 신내역에서 기다리는 중', false);
+  broadcast(`서버에 연결됨. ${startMsg}`, false);
   setInterval(poll, POLL_MS);
   requestAnimationFrame(animate);
 }

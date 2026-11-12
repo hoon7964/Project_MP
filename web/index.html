@@ -4,10 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>달무리버스 관제</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- 글꼴·지도 라이브러리(Leaflet 1.9.4)는 서버가 npm install로 받아 둔 것을 /vendor/… 로 내준다 → 인터넷 없이 됨.
+     npm install 전이라 없으면: Leaflet은 인터넷(unpkg)에서 대신 받고, 글꼴은 컴퓨터 기본 글꼴(맑은 고딕·바탕)로 보인다 -->
+<link rel="stylesheet" href="/vendor/fonts/gowun-batang/400.css" />
+<link rel="stylesheet" href="/vendor/fonts/gowun-batang/700.css" />
+<link rel="stylesheet" href="/vendor/fonts/ibm-plex-sans-kr/400.css" />
+<link rel="stylesheet" href="/vendor/fonts/ibm-plex-sans-kr/500.css" />
+<link rel="stylesheet" href="/vendor/fonts/ibm-plex-sans-kr/600.css" />
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" onerror="this.onerror=null; this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'" />
 <style>
   /* ───────── 달무리버스 관제 ─────────
      밤하늘 남색 바탕. 승차 거점 = 블루, 주거지(집) = 달빛 골드. 버스 3대는 민트·로즈·라벤더.
@@ -208,7 +212,7 @@
     box-shadow: 0 0 0 0 rgba(242, 196, 109, .4); transition: box-shadow .2s, filter .2s;
   }
   .call:hover { filter: brightness(1.05); box-shadow: 0 0 0 5px rgba(242, 196, 109, .14); }
-  .call:disabled { opacity: .6; cursor: progress; }
+  .call:disabled, .quick button:disabled { opacity: .45; cursor: not-allowed; filter: none; box-shadow: none; }
   .quick { display: flex; gap: 8px; margin-top: 8px; }
   .quick button { flex: 1; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 9px 8px; color: var(--ink-2); font-size: 13px; }
   .quick button:hover { color: var(--ink); border-color: var(--ink-3); }
@@ -423,7 +427,8 @@
     </aside>
   </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script>window.L || document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');</script>
 <!-- 관제 로직: 서버 API를 받아서 그리기만 함 (B5) -->
 <script src="control.js"></script>
 </body>

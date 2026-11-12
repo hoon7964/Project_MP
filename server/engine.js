@@ -101,7 +101,18 @@ function createEngine({ stops, config, paths = null }) {
     return s;
   }
   const state = initialState();
-  const reset = () => Object.assign(state, initialState()); // 관제 "초기화": 01:30, 버스 제자리, 호출 모두 지움
+
+  // 운행 끝 시각(시뮬 분). 시작보다 이르면 다음 날로 본다 (예: 23:30 시작 → 05:00 끝 = 다음 날 05:00)
+  const startMin = parseClock(config.SIM_START);
+  const serviceEndMin = config.SERVICE_END ? parseClock(config.SERVICE_END) + (parseClock(config.SERVICE_END) <= startMin ? 1440 : 0) : Infinity;
+  const inService = () => state.simTime < serviceEndMin - EPS;
+  // 관제 "초기화": 01:30, 버스 제자리, 호출 모두 지움.
+  // callId 번호는 이어서 매긴다 → 앱이 초기화 전 callId로 조회하면 남의 호출이 아니라 404를 받는다
+  const reset = () => {
+    const nextId = state.nextId;
+    Object.assign(state, initialState());
+    state.nextId = nextId;
+  };
 
   const loadOf = (callIds) => [...callIds].reduce((n, id) => n + state.calls.get(id).partySize, 0);
 
@@ -238,6 +249,9 @@ function createEngine({ stops, config, paths = null }) {
     if (!Number.isInteger(partySize) || partySize < config.PARTY_MIN || partySize > config.PARTY_MAX) {
       return { ok: false, error: `탑승 인원은 ${config.PARTY_MIN}~${config.PARTY_MAX}명` };
     }
+    if (!inService()) {
+      return { ok: false, error: `운행 시간이 끝남 (${config.SERVICE_END}). 관제에서 "처음부터 다시"를 누르면 ${config.SIM_START}부터 다시 운행` };
+    }
     const call = {
       callId: 'c-' + state.nextId++,
       originId,
@@ -334,7 +348,14 @@ function createEngine({ stops, config, paths = null }) {
       pts.push(...geomOf(prev, to).pts.slice(1));
       prev = to;
     }
-    return pts.map((p) => ({ lat: round6(p.lat), lng: round6(p.lng) }));
+    // 소수 6자리로 줄이고, 연달아 같은 점(꺾이는 점 위에 버스가 딱 있을 때·같은 정류장 연속)은 하나로
+    const outPts = [];
+    for (const p of pts) {
+      const q = { lat: round6(p.lat), lng: round6(p.lng) };
+      const last = outPts[outPts.length - 1];
+      if (!last || last.lat !== q.lat || last.lng !== q.lng) outPts.push(q);
+    }
+    return outPts;
   }
 
   const busInfo = (bus) => {
@@ -416,6 +437,7 @@ function createEngine({ stops, config, paths = null }) {
       return state.simTime;
     },
     simClock: () => formatClock(state.simTime),
+    inService, // 운행 시간 안인지 (새 호출을 받는지)
     travelMin,
     roadInfo, // { road: 도로 경로 쓴 쌍 수, straight: 직선×1.3으로 대신한 쌍 수 }
     _state: state,

@@ -41,7 +41,7 @@
   - `setInterval`로 1초마다 `tick`. 배속 기본 6 (실제 1초 = 시뮬 6초), 설정 값 하나로 조절
   - 끝난 호출(하차·배차 실패)은 지우지 않고 남겨서 앱이 `COMPLETED`·`REJECTED`를 받을 수 있게
 - [x] **B4. API (2h)**
-  - 공통 규약 3 그대로: `/stops`, `/map`, `/map/image`, `POST /calls`, `/calls/{callId}`, `/buses`. `callId`는 `"c-1"`, `"c-2"`…, 404·400 처리, `path`는 일단 `[]`
+  - 공통 규약 3 그대로: `/stops`, `/map`, `/map/image`, `POST /calls`, `/calls/{callId}`, `/buses`. `callId`는 `"c-1"`, `"c-2"`…, 404·400 처리, `path`는 일단 `[]` (B6에서 도로 좌표로 채움)
   - `express.static`으로 `../web` 폴더를 같이 띄움 → 웹 관제 주소 `http://localhost:3000/`
   - 완료 기준 (11/20): 브라우저에서 `/stops`, `/map`, `/map/image`, `/buses`가 보이고, PowerShell에서 `POST /calls`를 보내면 `callId`가 돌아오고, `/calls/{callId}`가 시간이 지나며 바뀜
   - 구현: `server/api.js`(라우트 처리, Express와 분리) + `server/index.js`(Express 연결, 요청 로그, 깨진 JSON 400). 확인: 서버 켜 둔 채 다른 창에서 `npm run test:api`
@@ -64,6 +64,9 @@
   - 결과(11/12): `npm run paths`(collect 3단계) 0.3초, 600쌍 모두 도로로 연결, `paths.json` 340KB. 도로÷직선 평균 1.36배, 정류장→도로 최대 17m, 봉화산 정상 부근 470m 안으로 지나는 경로 없음. 고속·간선(trunk)과 단지 안 길(service)은 뺌. 상봉역→신내동성3차 직선 1.6km → 도로 2.5km(버스 5.8분)
   - 함께 고친 것: 아직 안 탄 기존 승객이 "약속 14분 + 지연 5분"으로 15분 넘게 기다릴 수 있던 구멍 → 배정 때 기존 승객 대기 15분도 검사
   - 웹 관제: 1초 사이 버스 이동도 지난 `path`를 따라 옮겨서 30배속에서도 모퉁이를 질러가지 않음. 시나리오 문서·`server/README.md`·`DESIGN.md` 6절 갱신
+- [x] **11/12 최종 점검** — 실제 Express로 규약 모양(상태 5개)·잘못된 요청·경로 접근 확인. 포트 충돌 안내, 초기화 후 callId 이어 매김, 없는 주소 JSON 404, Ctrl+C 즉시 종료, `.env` 읽기, 관제 초기화 버그 수정
+  - 05:00 운행 끝 (제안서 00~05시): 이후 새 호출 400, 관제 호출 버튼 잠금
+  - 관제의 Leaflet·글꼴을 npm 의존성으로 받아 서버가 `/vendor/…`로 내줌 → 시연장에 인터넷이 없어도 됨 (없으면 인터넷에서 대신 받음)
 
 ### 통합 점검 (11/28~11/29)
 

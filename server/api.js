@@ -38,7 +38,10 @@ function createApi({ db, engine, sim }) {
 
     // ── 관제 전용 (웹 관제만 씀, 앱은 안 씀. 공통 규약 밖) ──
     listCalls: () => ({ status: 200, body: engine.listCalls() }),
-    getSim: () => ({ status: 200, body: { simClock: engine.simClock(), speed: sim.speed, busCount: engine.getBuses().length } }),
+    getSim: () => ({
+      status: 200,
+      body: { simClock: engine.simClock(), speed: sim.speed, busCount: engine.getBuses().length, inService: engine.inService() },
+    }),
     postSpeed(body) {
       const speed = Number((body || {}).speed);
       if (!Number.isInteger(speed) || speed < 1 || speed > 60) return { status: 400, body: { error: 'speed는 1~60 정수' } };
