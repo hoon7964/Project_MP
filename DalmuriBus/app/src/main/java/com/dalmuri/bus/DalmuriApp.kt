@@ -4,6 +4,15 @@ import android.app.Application
 
 /**
  * 앱 전체에서 하나만 있는 Application.
- * F2에서 여기에 간단한 컨테이너(API, 저장소)를 붙인다. Hilt는 안 쓴다.
+ * 앱이 켜질 때 AppContainer를 한 번 만들어 둔다. Hilt는 안 쓴다.
  */
-class DalmuriApp : Application()
+class DalmuriApp : Application() {
+
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+    }
+}
