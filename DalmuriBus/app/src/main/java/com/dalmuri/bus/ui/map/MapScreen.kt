@@ -16,14 +16,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.dalmuri.bus.DalmuriApp
+import com.dalmuri.bus.debug.ApiCheck
 import com.dalmuri.bus.ui.theme.BoardBlue
 import com.dalmuri.bus.ui.theme.MoonGold
+import kotlinx.coroutines.launch
 
 /**
  * 메인 화면 = 지도 영역 + 하단 시트.
@@ -70,6 +76,14 @@ private fun SheetPlaceholder() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        // ── F3 확인용 임시 버튼 (F6에서 지움): 누르면 API를 불러 Logcat "ApiCheck"에 찍음 ──
+        val container = (LocalContext.current.applicationContext as DalmuriApp).container
+        val scope = rememberCoroutineScope()
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(onClick = { scope.launch { ApiCheck.run(container.api) } }) {
+            Text("API 확인 (임시)")
+        }
     }
 }
 

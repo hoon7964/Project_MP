@@ -1,0 +1,11 @@
+{
+  "mapId": "bonghwasan-v1",
+  "imageUrl": "/map/image",
+  "widthPx": 2400,
+  "heightPx": 2306,
+  "north": 37.62,
+  "south": 37.5945,
+  "west": 127.0725,
+  "east": 127.106,
+  "attribution": "© OpenStreetMap contributors"
+}
