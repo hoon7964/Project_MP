@@ -4,6 +4,8 @@
 
     <!-- 우리 서버(http://10.0.2.2:3000) 통신 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 17(API 37)+: 로컬 네트워크(10.0.2.2·같은 와이파이 노트북) 접속 권한. 없으면 연결이 타임아웃 -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <application
         android:name=".DalmuriApp"
