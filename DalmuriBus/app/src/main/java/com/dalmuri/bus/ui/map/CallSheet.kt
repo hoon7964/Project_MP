@@ -116,16 +116,6 @@ fun CallSheet(
             Text(if (state.calling) "호출 중…" else "호출하기")
         }
 
-        // 받은 배차 ID + 임시 상태 줄 (F7에서 상태 시트 5종으로 바뀜)
-        state.callId?.let { id ->
-            Spacer(Modifier.height(8.dp))
-            val t = state.trip
-            Text(
-                "배차 ID $id" + if (t != null) " · ${t.simClock} ${t.status} · 버스 ${t.bus?.busId ?: "-"}" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
 
         // 6) 목록에서 고르기 (지도 점이 작아 누르기 어려울 때)
         Spacer(Modifier.height(4.dp))

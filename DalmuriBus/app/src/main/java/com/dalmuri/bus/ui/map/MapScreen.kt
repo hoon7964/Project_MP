@@ -30,19 +30,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dalmuri.bus.AppConfig
 import com.dalmuri.bus.ui.theme.BoardBlue
 import com.dalmuri.bus.ui.theme.MoonGold
+import com.dalmuri.bus.ui.trip.TripSheet
+import com.dalmuri.bus.ui.trip.TripViewModel
 
 /**
  * 메인 화면 = 지도 영역 + 하단 시트.
  *  - 지도 영역: MapLayer (지도 이미지 + 정류장·노선·버스, 핀치 줌·드래그, 정류장 누르기) + 범례 + 출처
- *  - 하단 시트: CallSheet (F6 호출). F7에서 호출 뒤 상태 시트 5종으로 바뀐다.
+ *  - 하단 시트: 호출 전에는 CallSheet (F6), 호출 뒤에는 TripSheet 상태 5종 (F7)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MapScreen(vm: MapViewModel = viewModel(factory = MapViewModel.Factory)) {
+fun MapScreen(
+    vm: MapViewModel = viewModel(factory = MapViewModel.Factory),
+    tripVm: TripViewModel = viewModel(factory = TripViewModel.Factory),
+) {
     val state by vm.state.collectAsState()
+    val trip by tripVm.state.collectAsState()
     val scaffoldState = rememberBottomSheetScaffoldState()
+
+    // 호출해서 배차 ID를 받으면 추적 시작 + 시트를 접어서 지도가 잘 보이게
+    LaunchedEffect(state.callId) {
+        val id = state.callId ?: return@LaunchedEffect
+        tripVm.start(id)
+        scaffoldState.bottomSheetState.partialExpand()
+    }
 
     // 정류장을 누르면 시트를 펼쳐서 정보 카드와 버튼이 보이게
     LaunchedEffect(state.selectedStopId) {
@@ -54,15 +68,30 @@ fun MapScreen(vm: MapViewModel = viewModel(factory = MapViewModel.Factory)) {
         sheetPeekHeight = 170.dp,  // 시트가 접혀 있을 때 보이는 높이
         sheetContainerColor = MaterialTheme.colorScheme.surface,
         sheetContent = {
-            CallSheet(
-                state = state,
-                onStopTap = vm::onStopTap,
-                onSetOrigin = vm::setOrigin,
-                onSetDest = vm::setDest,
-                onReset = vm::resetRoute,
-                onPartySize = vm::setPartySize,
-                onCall = vm::requestCall,
-            )
+            if (state.callId != null) {
+                TripSheet(
+                    trip = trip,
+                    stops = state.stops,
+                    onHome = {
+                        tripVm.clear()
+                        vm.resetRoute()
+                    },
+                    onRetry = {
+                        tripVm.clear()
+                        vm.clearCall()
+                    },
+                )
+            } else {
+                CallSheet(
+                    state = state,
+                    onStopTap = vm::onStopTap,
+                    onSetOrigin = vm::setOrigin,
+                    onSetDest = vm::setDest,
+                    onReset = vm::resetRoute,
+                    onPartySize = vm::setPartySize,
+                    onCall = vm::requestCall,
+                )
+            }
         },
     ) { _ ->
         // 지도는 시트 뒤까지 화면 전체를 채운다
@@ -76,17 +105,19 @@ fun MapScreen(vm: MapViewModel = viewModel(factory = MapViewModel.Factory)) {
             val info = state.mapInfo
             when {
                 image != null && info != null -> {
-                    val trip = state.trip
+                    // 호출 중이면 받은 상태로, 아니면 고르고 있는 출발·도착으로 그림
+                    val detail = if (state.callId != null) trip.detail else null
+                    val bus = rememberSmoothBus(detail?.bus, AppConfig.POLL_MS.toInt())
                     MapLayer(
                         mapInfo = info,
                         mapImage = image,
                         stops = state.stops,
                         selectedStopId = state.selectedStopId,
-                        originId = state.originId,
-                        destId = state.destId,
-                        bus = trip?.bus,
-                        route = trip?.route.orEmpty(),
-                        path = trip?.path.orEmpty(),
+                        originId = detail?.originId ?: state.originId,
+                        destId = detail?.destId ?: state.destId,
+                        bus = bus,
+                        route = detail?.route.orEmpty(),
+                        path = detail?.path.orEmpty(),
                         onStopTap = vm::onStopTap,
                     )
                     StopLegend(

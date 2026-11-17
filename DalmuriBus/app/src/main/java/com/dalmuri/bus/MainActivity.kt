@@ -29,4 +29,15 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    // 화면이 보이는 동안만 배차 상태를 조회한다 (ROLE_FRONT.md F7 "화면 꺼지면 멈춤")
+    override fun onStart() {
+        super.onStart()
+        (application as DalmuriApp).container.appVisible.value = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        (application as DalmuriApp).container.appVisible.value = false
+    }
 }

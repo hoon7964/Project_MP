@@ -9,19 +9,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.dalmuri.bus.DalmuriApp
-import com.dalmuri.bus.data.model.CallDetail
 import com.dalmuri.bus.data.model.CallRequest
-import com.dalmuri.bus.data.model.CallStatus
 import com.dalmuri.bus.data.model.MapInfo
 import com.dalmuri.bus.data.model.Stop
 import com.dalmuri.bus.data.remote.DalmuriApi
-import com.dalmuri.bus.data.remote.isNotFound
 import com.dalmuri.bus.data.remote.toUserMessage
 import com.dalmuri.bus.data.repository.MapRepository
 import com.dalmuri.bus.data.repository.StopRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,14 +40,13 @@ data class MapUiState(
     val calling: Boolean = false,       // POST /calls 기다리는 중
     val callId: String? = null,         // 받은 배차 ID
     val message: String? = null,        // 사용자에게 보여 줄 안내·에러 문구
-    // ── 임시: F7에서 TripViewModel로 옮긴다 ──
-    val trip: CallDetail? = null,
 )
 
 /**
  * 지도 화면 ViewModel.
  *  - F4: 화면이 처음 뜰 때 정류장·지도를 저장소에서 꺼낸다
  *  - F6: 출발·도착·인원을 고르고 호출해서 배차 ID(callId)를 받는다
+ *    (받은 뒤 추적은 TripViewModel이 한다, F7)
  */
 class MapViewModel(
     private val stopRepository: StopRepository,
@@ -111,8 +105,12 @@ class MapViewModel(
 
     /** [다시 고르기]: 출발·도착을 비움 */
     fun resetRoute() {
-        trackJob?.cancel()
-        _state.update { it.copy(originId = null, destId = null, selectedStopId = null, callId = null, trip = null, message = null) }
+        _state.update { it.copy(originId = null, destId = null, selectedStopId = null, callId = null, message = null) }
+    }
+
+    /** 배차 불가·호출 사라짐 → 다시 호출: 출발·도착·인원은 그대로 두고 호출만 비움 */
+    fun clearCall() {
+        _state.update { it.copy(callId = null, message = null) }
     }
 
     fun setPartySize(n: Int) {
@@ -133,34 +131,11 @@ class MapViewModel(
             try {
                 val res = api.createCall(CallRequest(originId = origin, destId = dest, partySize = s.partySize))
                 _state.update { it.copy(calling = false, callId = res.callId) }
-                startTracking(res.callId)  // 임시 (F7에서 TripViewModel로)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // 400이면 서버가 준 이유(예: 운행 시간 끝남)를 그대로 보여 줌
                 _state.update { it.copy(calling = false, message = e.toUserMessage()) }
-            }
-        }
-    }
-
-    // ── 임시 추적: 2초마다 상태를 받아 지도에 그림. F7에서 TripViewModel + 상태 시트 5종으로 바꾼다 ──
-    private var trackJob: Job? = null
-
-    private fun startTracking(callId: String) {
-        trackJob?.cancel()
-        trackJob = viewModelScope.launch {
-            try {
-                while (true) {
-                    val detail = api.getCall(callId)
-                    _state.update { it.copy(trip = detail) }
-                    if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED) break
-                    delay(2_000)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val msg = if (e.isNotFound()) "호출 정보가 없어요, 다시 호출해 주세요" else e.toUserMessage()
-                _state.update { it.copy(trip = null, callId = null, message = msg) }
             }
         }
     }
