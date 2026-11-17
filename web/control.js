@@ -22,6 +22,7 @@ const STATUS_TEXT = {
   ONBOARD: '타고 가는 중',
   COMPLETED: '하차 완료',
   REJECTED: '배차 못 함',
+  CANCELED: '호출 취소',
 };
 
 let STOPS = [];
@@ -37,7 +38,9 @@ let map;
 let mapBounds;
 let partySize = 1;
 let simClock = '--:--';
-const busLayers = {}; // busId → { marker, line, track, cum, t0, rest }
+const busLayers = {}; // busId → { marker, line, track, cum, t0, rest, ahead }
+const BUS_M_PER_SIM_MIN = (26 * 1000) / 60; // 버스 속도 26km/h (server/config.js SPEED_KMH와 같게)
+let simSpeed = 6; // 서버 배속 (GET /sim)
 
 async function api(method, path, body) {
   const res = await fetch(path, {
@@ -148,10 +151,14 @@ function cumOf(pts) {
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + flat(pts[i - 1], pts[i]));
   return cum;
 }
-// 화면에 있는 위치 from에서, 지난 path(old)를 따라 새 위치 to까지 가는 좌표들
-function trackAlong(from, to, old) {
+// 화면에 있는 위치 from에서, 지난 path(old)를 따라 새 위치 to까지 가는 좌표들.
+// 같은 길을 갔다가 되돌아오는 노선(태우러 갔다가 돌아 나옴)은 새 위치 근처를 path가 두 번 지난다.
+// 가장 가까운 곳만 고르면 되돌아오는 쪽에 붙어서 1초 만에 정류장까지 갔다 오는 것처럼 앞뒤로 튀므로(11/17 재열 제보),
+// 새 위치에서 25m 안인 후보 중 "이번 1초 동안 버스가 갔어야 할 거리(expectM)"에 가장 가까운 곳을 고른다. 버스는 일정 속도라 거의 정확함.
+function trackAlong(from, to, old, expectM) {
   if (old.length < 2) return [from, to];
-  let best = { d: Infinity, i: 0 };
+  const cum = cumOf(old);
+  let best = null;
   for (let i = 1; i < old.length; i++) {
     const a = old[i - 1];
     const b = old[i];
@@ -161,9 +168,11 @@ function trackAlong(from, to, old) {
     const len2 = dx * dx + dy * dy;
     const t = len2 ? Math.max(0, Math.min(1, ((to[1] - a[1]) * k * dx + (to[0] - a[0]) * dy) / len2)) : 0;
     const d = flat([a[0] + dy * t, a[1] + (b[1] - a[1]) * t], to);
-    if (d < best.d) best = { d, i };
+    if (d > 25) continue;
+    const score = Math.abs(cum[i - 1] + t * (cum[i] - cum[i - 1]) - expectM);
+    if (!best || score < best.score) best = { score, i };
   }
-  if (best.d > 25) return [from, to]; // 노선이 바뀌었으면 그냥 직선
+  if (!best) return [from, to]; // 노선이 바뀌었으면 그냥 직선
   return [from, ...old.slice(1, best.i), to];
 }
 function animate(now) {
@@ -207,9 +216,11 @@ function renderBuses(buses) {
     const layer = ensureBusLayer(b);
     const shown = layer.marker.getLatLng();
     const to = [b.lat, b.lng];
-    layer.track = trackAlong([shown.lat, shown.lng], to, layer.ahead);
+    const now = performance.now();
+    const elapsedS = layer.t0 ? Math.min(5, (now - layer.t0) / 1000) : 0;
+    layer.track = trackAlong([shown.lat, shown.lng], to, layer.ahead, BUS_M_PER_SIM_MIN * elapsedS * (simSpeed / 60));
     layer.cum = cumOf(layer.track);
-    layer.t0 = performance.now();
+    layer.t0 = now;
     // 노선선: path(도로 좌표, 첫 점 = 버스 위치)가 있으면 그대로, 없으면 route 정류장을 직선으로
     const ahead = b.path.length ? b.path.map((p) => [p.lat, p.lng]) : [to, ...b.route.map((r) => [r.lat, r.lng])];
     layer.ahead = ahead;
@@ -261,7 +272,7 @@ function renderCalls(calls) {
 
   // 승객 목록: 진행 중인 호출 먼저, 그다음 최근에 끝난 것 (최대 12개)
   const live = calls.filter((c) => c.status === 'REQUESTED' || c.status === 'ASSIGNED' || c.status === 'ONBOARD');
-  const done = calls.filter((c) => c.status === 'COMPLETED' || c.status === 'REJECTED');
+  const done = calls.filter((c) => c.status === 'COMPLETED' || c.status === 'REJECTED' || c.status === 'CANCELED');
   const items = [...live, ...done].slice(0, 12);
   $('paxEmpty').hidden = items.length > 0;
   $('paxCount').textContent = calls.length ? `진행 중 ${live.length}건, 전체 ${calls.length}건` : '';
@@ -272,7 +283,7 @@ function renderCalls(calls) {
       if (c.status === 'ONBOARD') text = `${fmtMin(c.etaDropoffMin)} 뒤 하차`;
       const st = c.busId && busStyle(c.busId);
       return (
-        `<li class="${c.status === 'COMPLETED' || c.status === 'REJECTED' ? 'done' : ''}" style="--c:${st ? st.color : 'inherit'}">` +
+        `<li class="${c.status === 'COMPLETED' || c.status === 'REJECTED' || c.status === 'CANCELED' ? 'done' : ''}" style="--c:${st ? st.color : 'inherit'}">` +
         `<span class="nm">${esc(labels[c.callId] || c.callId)}${st ? `<em>${st.name}</em>` : ''}</span>` +
         `<span class="st ${c.status}">${text}</span>` +
         `<span class="rt">${c.requestClock} ${esc(stopName(c.originId))} → ${esc(stopName(c.destId))}, ${c.partySize}명</span></li>`
@@ -322,6 +333,7 @@ function announce(calls) {
     else if (c.status === 'ONBOARD') broadcast(`${who}: ${stopName(c.originId)}에서 ${bus}에 탑승`);
     else if (c.status === 'COMPLETED') broadcast(`${who}: ${stopName(c.destId)}에서 내림. 귀가 완료`);
     else if (c.status === 'REJECTED') broadcast(`${who}: 15분 안에 탈 수 있는 버스가 없어 배차하지 못함`);
+    else if (c.status === 'CANCELED') broadcast(`${who}: 승객이 호출을 취소함${bus ? `. ${bus} 노선에서 뺌` : ''}`);
     lastStatus[c.callId] = c.status;
   }
 }
@@ -404,6 +416,7 @@ function setupSpeedButtons() {
   }
 }
 function markSpeed(speed) {
+  simSpeed = speed;
   for (const b of document.querySelectorAll('#speedGroup button')) {
     const on = Number(b.dataset.speed) === speed;
     b.classList.toggle('active', on);

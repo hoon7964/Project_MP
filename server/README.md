@@ -54,6 +54,8 @@ npm start            # 서버 켜기. 끄려면 Ctrl+C
 | `POST /calls` | 호출 | `CallRequest` | `CallResponse` |
 | `GET /calls/{callId}` | 내 배차 상태 (앱이 2초마다) | — | `CallDetail` |
 | `GET /buses` | 버스 전체 상태 (웹 관제용) | — | `BusState` 배열 |
+| `POST /calls/{callId}/cancel` | 호출 취소 (추가 기능) | — | `CallDetail` (`CANCELED`) |
+| `GET /users/{userId}/calls` | 내 이용 내역, 최근 것부터 최대 50건 (추가 기능) | — | `CallHistory` 배열 |
 
 **오류:** 같은 정류장·없는 정류장·인원 1~3명 밖·깨진 JSON·05:00 운행이 끝난 뒤 호출 → `400 { "error": "..." }`, 모르는 `callId`·없는 주소 → `404 { "error": "..." }`.
 
@@ -88,7 +90,10 @@ npm start            # 서버 켜기. 끄려면 Ctrl+C
 ### 앱이 알아 둘 것
 
 - **운행 시간:** 시뮬 시각 01:30에 시작해 **05:00에 운행이 끝난다** (제안서 심야 00~05시). 그 뒤 `POST /calls`는 `400 { "error": "운행 시간이 끝남 (05:00)…" }` → 앱은 다른 400처럼 `error`를 보여 주면 된다. 이미 잡힌 승객은 끝까지 태워 준다. 6배속이면 서버를 켜고 35분, 12배속이면 17분 반 뒤다. 웹 관제 "처음부터 다시"로 01:30부터 다시.
-- **상태 흐름:** `REQUESTED`(빈 버스 찾는 중, `busId` null) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 15분 안에 못 잡으면 `REJECTED`. `COMPLETED`·`REJECTED`가 오면 조회를 멈추면 된다 (끝난 호출도 서버에 남아 있어서 404가 나지 않는다).
+- **상태 흐름:** `REQUESTED`(빈 버스 찾는 중, `busId` null) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 15분 안에 못 잡으면 `REJECTED`, 승객이 취소하면 `CANCELED`. `COMPLETED`·`REJECTED`·`CANCELED`가 오면 조회를 멈추면 된다 (끝난 호출도 서버에 남아 있어서 404가 나지 않는다).
+- **누가 호출했는지:** `POST /calls`에 `"userId": "<Firebase uid>"`를 같이 보내면 이용 내역에 남는다 (선택, 1~128자 문자열. 웹 관제는 안 보냄).
+- **호출 취소** `POST /calls/{callId}/cancel` (본문 없음): `REQUESTED`·`ASSIGNED`만 취소되고 그 호출의 `CallDetail`(`status: CANCELED`, `bus` null, `route`·`path` `[]`)이 온다. 이미 취소한 걸 또 보내도 200 같은 결과. 탑승 중·끝난 호출은 400, 모르는 `callId`는 404. 버스가 이미 그 정류장으로 가는 중이면 거기까지는 가고 다음 경유지로 간다. 같은 버스의 다른 승객 ETA는 다시 계산된다.
+- **이용 내역** `GET /users/{userId}/calls`: 그 `userId`로 한 호출만, 최근 것부터 최대 50건(진행 중 포함). 각 원소 `{ callId, status, originId, destId, partySize, busId, requestClock, pickupClock, dropoffClock, canceledClock }`, 아직 안 일어난 시각은 `null`. 호출한 적 없으면 `[]`. **서버 메모리**라서 서버를 껐다 켜거나 웹 관제 "처음부터 다시"를 누르면 비워진다 (시각이 시뮬 시각이라서).
 - **`route`는 그 승객이 내리는 정류장까지만** 온다. 사이에 다른 `callId`가 있으면 합승이다. 같은 정류장이 연달아 나올 수 있다(같은 곳에서 여러 명 승차).
 - **`path` = 버스 지금 위치부터 내 하차 정류장까지의 도로 좌표** (B6). 그대로 이어 그리면 버스가 봉화산을 가로지르지 않고 도로를 따라간다. `REQUESTED`·`COMPLETED`·`REJECTED`일 때는 `[]`. 앱은 `path`가 비어 있으면 `route`를 직선으로 잇는 코드도 그대로 두면 된다 (서버에 `paths.json`이 없을 때 대비).
 - `etaPickupMin`은 `ONBOARD`부터 `null`, `etaDropoffMin`은 `ASSIGNED`·`ONBOARD`일 때만 있다.
@@ -111,6 +116,8 @@ cmd (Windows 10 이상에 들어 있는 curl):
 curl http://localhost:3000/stops
 curl -X POST http://localhost:3000/calls -H "Content-Type: application/json" -d "{\"originId\":\"07003\",\"destId\":\"07275\",\"partySize\":1}"
 curl http://localhost:3000/calls/c-1
+curl -X POST http://localhost:3000/calls/c-1/cancel
+curl http://localhost:3000/users/abc123/calls
 ```
 
 PowerShell:

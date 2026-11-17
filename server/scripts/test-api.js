@@ -95,6 +95,31 @@ async function main() {
     d2.data.status !== d1.data.status || d2.data.simClock !== d1.data.simClock || (d2.data.etaPickupMin ?? 0) < d1.data.etaPickupMin;
   check(moved, `GET /calls/${id} → ${d2.data.status} · ${d2.data.simClock} · 탑승까지 ${d2.data.etaPickupMin ?? '-'}분 · 하차까지 ${d2.data.etaDropoffMin ?? '-'}분`);
 
+  // 추가 기능: userId, 이용 내역, 호출 취소
+  const uid = 'test-' + Date.now();
+  const badUid = await req('POST', '/calls', { originId: '07003', destId: '07275', partySize: 1, userId: 123 });
+  check(badUid.status === 400, `POST /calls userId가 숫자 → ${badUid.status} (400이어야 함)`);
+  const mine = await req('POST', '/calls', { originId: '07440', destId: '07385', partySize: 2, userId: uid });
+  check(mine.status === 200, `POST /calls userId 포함 → ${mine.status} ${JSON.stringify(mine.data)}`);
+  const hist = await req('GET', `/users/${uid}/calls`);
+  check(
+    hist.status === 200 && hist.data.length === 1 && hasKeys(hist.data[0], ['callId', 'status', 'originId', 'destId', 'partySize', 'busId', 'requestClock', 'pickupClock', 'dropoffClock', 'canceledClock']),
+    `GET /users/{userId}/calls → ${hist.status}, ${hist.data.length}건 ${JSON.stringify(hist.data[0])}`
+  );
+  const none = await req('GET', '/users/nobody-xyz/calls');
+  check(none.status === 200 && none.data.length === 0, `GET /users/(호출 없음)/calls → ${none.status} [] `);
+  const cancel = await req('POST', `/calls/${mine.data.callId}/cancel`);
+  check(
+    cancel.status === 200 && cancel.data.status === 'CANCELED' && cancel.data.bus === null && cancel.data.path.length === 0,
+    `POST /calls/${mine.data.callId}/cancel → ${cancel.status} ${cancel.data.status}`
+  );
+  const again = await req('POST', `/calls/${mine.data.callId}/cancel`);
+  check(again.status === 200 && again.data.status === 'CANCELED', `  한 번 더 취소 → ${again.status} (200, 같은 결과)`);
+  const after = await req('GET', `/users/${uid}/calls`);
+  check(after.data[0].status === 'CANCELED' && after.data[0].canceledClock, `  이용 내역: ${after.data[0].status}, 취소 ${after.data[0].canceledClock}`);
+  const unknownCancel = await req('POST', '/calls/c-99999/cancel');
+  check(unknownCancel.status === 404, `POST /calls/c-99999/cancel → ${unknownCancel.status} (404여야 함)`);
+
   console.log(failures === 0 ? '\n✓ API 모두 통과' : `\n✗ 실패 ${failures}건`);
   process.exit(failures === 0 ? 0 : 1);
 }

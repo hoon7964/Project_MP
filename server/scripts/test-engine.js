@@ -166,6 +166,54 @@ console.log('\n1-1) 운행 시간');
   check(e.inService() && e.requestCall({ originId: '07003', destId: '07275', partySize: 1 }).ok, '처음부터 다시 → 01:30부터 다시 호출 가능');
 }
 
+// ───────── 1-2) 호출 취소·이용 내역 (추가 기능) ─────────
+console.log('\n1-2) 호출 취소·이용 내역');
+{
+  const e = createEngine({ stops, config, paths });
+  const me = 'uid-jaeyeol';
+  // 페르소나(앱, userId) + 같은 방향 합승 2명(관제) → 둘 다 2호차
+  const a = e.requestCall({ originId: '07003', destId: '07275', partySize: 1, userId: me }).response;
+  const b = e.requestCall({ originId: '07003', destId: '07279', partySize: 2 }).response;
+  check(a.busId === b.busId, '취소 시험용 합승이 같은 버스여야 함');
+  const etaBefore = e.getCallDetail(b.callId).etaDropoffMin;
+  const bus = e._state.buses.find((x) => x.busId === a.busId);
+  const r = e.cancelCall(a.callId);
+  const d = r.detail;
+  console.log(`  ${a.callId} 취소 → ${d.status}, bus ${d.bus}, route ${d.route.length}, path ${d.path.length}, ETA ${d.etaPickupMin}/${d.etaDropoffMin}`);
+  check(r.ok && d.status === 'CANCELED' && d.bus === null && d.route.length === 0 && d.path.length === 0 && d.etaPickupMin === null && d.etaDropoffMin === null, '취소 응답은 CANCELED + bus null, route·path [], ETA null');
+  const left = bus.waypoints.flatMap((w) => [...w.pickups, ...w.dropoffs]);
+  check(!left.includes(a.callId), '취소한 승객은 버스 경유지에서 빠져야 함');
+  const etaAfter = e.getCallDetail(b.callId).etaDropoffMin;
+  console.log(`  남은 승객 ${b.callId} 하차까지: ${etaBefore}분 → ${etaAfter}분`);
+  check(etaAfter <= etaBefore + 1e-9, '취소 뒤 남은 승객 ETA가 늦어지면 안 됨');
+  check(e.cancelCall(a.callId).ok, '이미 취소한 걸 다시 보내도 성공(같은 결과)');
+  check(e.cancelCall('c-999').status === 404, '모르는 callId 취소는 404');
+  run(e, 3); // c-2 탑승
+  const onboard = e.cancelCall(b.callId);
+  check(!onboard.ok && onboard.status === 400, `탑승 중 취소는 400 (${e.getCallDetail(b.callId).status}: ${onboard.error})`);
+
+  // 버스를 다 막아서 REQUESTED로 남는 호출 → 취소하면 대기열에서 빠짐
+  const e2 = createEngine({ stops, config: { ...config, BUS_COUNT: 1 }, paths });
+  for (let i = 0; i < 2; i++) e2.requestCall({ originId: '07440', destId: '07390', partySize: 3 });
+  const p = e2.requestCall({ originId: '07003', destId: '07275', partySize: 3, userId: me }).response;
+  console.log(`  버스 1대가 꽉 찬 뒤 호출 ${p.callId}: ${p.status}`);
+  check(p.status === 'REQUESTED' && e2.cancelCall(p.callId).ok && !e2._state.pending.includes(p.callId), 'REQUESTED 취소는 대기열에서 빠져야 함');
+  run(e2, 20);
+  check(e2._state.calls.get(p.callId).status === 'CANCELED', '취소한 호출은 시간이 지나도 REJECTED로 안 바뀜');
+
+  // 이용 내역
+  const c = e.requestCall({ originId: '07440', destId: '07385', partySize: 2, userId: me }).response;
+  run(e, 30);
+  const h = e.userCalls(me);
+  console.log('  이용 내역: ' + h.map((x) => `${x.callId} ${x.status} 요청 ${x.requestClock} 탑승 ${x.pickupClock} 하차 ${x.dropoffClock} 취소 ${x.canceledClock}`).join(' / '));
+  check(h.length === 2 && h[0].callId === c.callId && h[1].callId === a.callId, '내 호출만, 최근 것부터');
+  check(h[0].status === 'COMPLETED' && h[0].pickupClock && h[0].dropoffClock && h[0].canceledClock === null, '하차 완료 호출은 탑승·하차 시각이 있음');
+  check(h[1].status === 'CANCELED' && h[1].pickupClock === null && h[1].canceledClock === '01:30' && h[1].busId === a.busId, '취소 호출은 취소 시각과 배정됐던 버스');
+  check(Array.isArray(e.userCalls('nobody')) && e.userCalls('nobody').length === 0, '호출한 적 없는 userId는 []');
+  e.reset();
+  check(e.userCalls(me).length === 0, '처음부터 다시 → 이용 내역도 비워짐');
+}
+
 // ───────── 2) 무작위 부하 테스트 ─────────
 console.log('\n2) 무작위 호출 테스트 (제약 검사)');
 {

@@ -242,7 +242,8 @@ function createEngine({ stops, config, paths = null }) {
 
   // ───────── 호출 (웹 requestRide) ─────────
   // 성공: { ok: true, response: CallResponse }   잘못된 요청: { ok: false, error }
-  function requestCall({ originId, destId, partySize }) {
+  // userId = 앱의 Firebase uid (이용 내역용). 웹 관제 호출은 null
+  function requestCall({ originId, destId, partySize, userId = null }) {
     if (!stopById.has(originId)) return { ok: false, error: `없는 출발 정류장: ${originId}` };
     if (!stopById.has(destId)) return { ok: false, error: `없는 도착 정류장: ${destId}` };
     if (originId === destId) return { ok: false, error: '출발과 도착이 같은 정류장' };
@@ -257,6 +258,7 @@ function createEngine({ stops, config, paths = null }) {
       originId,
       destId,
       partySize,
+      userId,
       requestTime: state.simTime,
       status: 'REQUESTED',
       busId: null,
@@ -266,11 +268,40 @@ function createEngine({ stops, config, paths = null }) {
       etaDropoff: null,
       pickedUpAt: null,
       droppedAt: null,
+      canceledAt: null,
       lastDecision: null,
     };
     state.calls.set(call.callId, call);
     if (!tryAssign(call)) state.pending.push(call.callId); // 지금은 못 잡음 → 매 tick 다시 시도
     return { ok: true, response: { callId: call.callId, status: call.status, busId: call.busId } };
+  }
+
+  // ───────── 호출 취소 (추가 기능, 11/17 재열 제안 → 11/18 합의) ─────────
+  // REQUESTED·ASSIGNED만. 이미 CANCELED면 그대로 성공(다시 보내도 안전). 결과 { ok, detail } 또는 { ok: false, status, error }
+  function cancelCall(callId) {
+    const c = state.calls.get(callId);
+    if (!c) return { ok: false, status: 404, error: `모르는 callId: ${callId}` };
+    if (c.status === 'CANCELED') return { ok: true, detail: getCallDetail(callId) };
+    if (c.status === 'ONBOARD') return { ok: false, status: 400, error: '이미 버스에 탄 호출은 취소할 수 없음' };
+    if (c.status === 'COMPLETED' || c.status === 'REJECTED') return { ok: false, status: 400, error: `이미 끝난 호출은 취소할 수 없음 (${c.status})` };
+
+    if (c.status === 'REQUESTED') {
+      state.pending = state.pending.filter((id) => id !== callId);
+    } else {
+      // ASSIGNED: 버스 경유지에서 이 승객의 승차·하차를 빼고, 빈 경유지는 없앤다.
+      // 단 지금 가고 있는 경유지(움직이는 중의 waypoints[0])는 비어도 둔다 → 그 정류장까지는 가고 다음으로 (구간 중간에서 방향을 못 바꿈)
+      const bus = state.buses.find((b) => b.busId === c.busId);
+      bus.waypoints = bus.waypoints
+        .map((wp) => ({ ...wp, pickups: wp.pickups.filter((id) => id !== callId), dropoffs: wp.dropoffs.filter((id) => id !== callId) }))
+        .filter((wp, i) => wp.pickups.length || wp.dropoffs.length || (i === 0 && bus.status === 'moving'));
+      // 남은 승객 예상 시각 다시 계산 (빨라질 수만 있음). 처음 약속(firstPickup 등)은 그대로
+      const res = evaluate(bus, bus.waypoints);
+      for (const [id, t] of Object.entries(res.pickupTimes)) state.calls.get(id).etaPickup = t;
+      for (const [id, t] of Object.entries(res.dropoffTimes)) state.calls.get(id).etaDropoff = t;
+    }
+    c.status = 'CANCELED';
+    c.canceledAt = state.simTime;
+    return { ok: true, detail: getCallDetail(callId) };
   }
 
   // ───────── 이동 (웹 tick · arriveBusAtStop) ─────────
@@ -398,6 +429,27 @@ function createEngine({ stops, config, paths = null }) {
     };
   }
 
+  // GET /users/{userId}/calls → CallHistory 배열 (최근 것부터, 진행 중 포함). 없는 userId면 []
+  function userCalls(userId, limit = 50) {
+    const clock = (t) => (t == null ? null : formatClock(t));
+    return [...state.calls.values()]
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => b.requestTime - a.requestTime || Number(b.callId.slice(2)) - Number(a.callId.slice(2)))
+      .slice(0, limit)
+      .map((c) => ({
+        callId: c.callId,
+        status: c.status,
+        originId: c.originId,
+        destId: c.destId,
+        partySize: c.partySize,
+        busId: c.busId, // 배정된 적 없으면 null (배정 뒤 취소면 그 버스)
+        requestClock: formatClock(c.requestTime),
+        pickupClock: clock(c.pickedUpAt),
+        dropoffClock: clock(c.droppedAt),
+        canceledClock: clock(c.canceledAt),
+      }));
+  }
+
   // GET /buses → BusState 배열 (웹 관제용)
   function getBuses() {
     return state.buses.map((bus) => ({ ...busInfo(bus), route: bus.waypoints.map(routeStop), path: busPath(bus) }));
@@ -427,6 +479,8 @@ function createEngine({ stops, config, paths = null }) {
 
   return {
     requestCall,
+    cancelCall,
+    userCalls,
     tick,
     getCallDetail,
     getBuses,

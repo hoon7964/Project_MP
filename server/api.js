@@ -8,6 +8,8 @@
 //   POST /calls            → CallResponse      (잘못된 요청 400)
 //   GET  /calls/{callId}   → CallDetail        (모르는 callId 404)
 //   GET  /buses            → BusState 배열 (웹 관제용)
+//   POST /calls/{callId}/cancel → CallDetail (status CANCELED)   (끝난·탑승 중 호출 400, 모르는 callId 404)
+//   GET  /users/{userId}/calls  → CallHistory 배열 (이용 내역, 최근 것부터)
 //
 // 관제 전용 (공통 규약 밖, 앱은 안 씀): GET /calls, GET /sim, POST /sim/speed, POST /sim/reset
 
@@ -21,11 +23,15 @@ function createApi({ db, engine, sim }) {
     getMapImage: () => ({ status: 200, file: db.mapImagePath }),
 
     postCall(body) {
-      const { originId, destId, partySize } = body || {};
+      const { originId, destId, partySize, userId = null } = body || {};
       if (typeof originId !== 'string' || typeof destId !== 'string' || typeof partySize !== 'number') {
-        return { status: 400, body: { error: '본문은 { "originId": "07003", "destId": "07275", "partySize": 1 } 형식' } };
+        return { status: 400, body: { error: '본문은 { "originId": "07003", "destId": "07275", "partySize": 1, "userId": "(선택)" } 형식' } };
       }
-      const r = engine.requestCall({ originId, destId, partySize });
+      // userId는 선택 (웹 관제는 안 보냄). 보내면 1~128자 문자열
+      if (userId !== null && (typeof userId !== 'string' || userId.length === 0 || userId.length > 128)) {
+        return { status: 400, body: { error: 'userId는 1~128자 문자열 (없으면 빼거나 null)' } };
+      }
+      const r = engine.requestCall({ originId, destId, partySize, userId });
       return r.ok ? { status: 200, body: r.response } : { status: 400, body: { error: r.error } };
     },
 
@@ -35,6 +41,12 @@ function createApi({ db, engine, sim }) {
     },
 
     getBuses: () => ({ status: 200, body: engine.getBuses() }),
+
+    postCancel(callId) {
+      const r = engine.cancelCall(callId);
+      return r.ok ? { status: 200, body: r.detail } : { status: r.status, body: { error: r.error } };
+    },
+    getUserCalls: (userId) => ({ status: 200, body: engine.userCalls(userId) }),
 
     // ── 관제 전용 (웹 관제만 씀, 앱은 안 씀. 공통 규약 밖) ──
     listCalls: () => ({ status: 200, body: engine.listCalls() }),

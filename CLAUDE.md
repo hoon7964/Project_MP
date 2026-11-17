@@ -73,6 +73,8 @@
 | `POST /calls` | 호출 | `CallRequest` | `CallResponse` |
 | `GET /calls/{callId}` | 내 배차 상태 (앱이 주기적으로) | 없음 | `CallDetail` |
 | `GET /buses` | 전체 버스 상태 (웹 관제용) | 없음 | `BusState` 배열 |
+| `POST /calls/{callId}/cancel` | 호출 취소 (추가 기능) | 없음 | `CallDetail` (`status` = `CANCELED`) |
+| `GET /users/{userId}/calls` | 내 이용 내역, 최근 것부터 최대 50건 (추가 기능) | 없음 | `CallHistory` 배열 |
 
 ```json
 // GET /stops 의 원소 (server/data/stops.json 실제 값)
@@ -84,8 +86,8 @@
   "north": 37.62, "south": 37.5945, "west": 127.0725, "east": 127.106,
   "attribution": "© OpenStreetMap contributors" }
 
-// POST /calls
-요청: { "originId": "07101", "destId": "07215", "partySize": 2 }
+// POST /calls   (userId = 앱의 Firebase uid, 선택. 웹 관제 호출은 빼거나 null)
+요청: { "originId": "07101", "destId": "07215", "partySize": 2, "userId": "abc123" }
 응답: { "callId": "c-17", "status": "ASSIGNED", "busId": "BUS2" }   // 바로 못 잡으면 "REQUESTED", busId null
 
 // GET /calls/c-17
@@ -101,6 +103,14 @@
   "path": [ { "lat": 37.6110, "lng": 127.0990 }, { "lat": 37.6114, "lng": 127.1003 }, ... { "lat": 37.6075, "lng": 127.0960 } ]
 }
 
+// POST /calls/c-17/cancel → 그 호출의 CallDetail
+{ "callId": "c-17", "status": "CANCELED", "partySize": 2, "originId": "07101", "destId": "07215",
+  "simClock": "01:43", "etaPickupMin": null, "etaDropoffMin": null, "bus": null, "route": [], "path": [] }
+
+// GET /users/abc123/calls 의 원소 (아직 안 일어난 시각은 null)
+{ "callId": "c-12", "status": "COMPLETED", "originId": "07003", "destId": "07275", "partySize": 1, "busId": "BUS2",
+  "requestClock": "01:36", "pickupClock": "01:38", "dropoffClock": "01:44", "canceledClock": null }
+
 // GET /buses 의 원소
 { "busId": "BUS2", "lat": 37.6110, "lng": 127.0990, "load": 3, "capacity": 6, "route": [ ...RouteStop ], "path": [ ...MapPoint ] }
 ```
@@ -109,14 +119,16 @@
 
 - `kind`는 `HUB`(승차 거점: N버스에서 내려 타는 역 앞, 파랑) 또는 `HOME`(주거지: 집 근처 하차, 주황). `nightRoutes`는 그 정류장에 서는 심야 N버스 노선 이름 목록이고 `HOME`은 `[]`.
 - `callId`가 교수님이 말한 "배차 ID"다.
-- `status`는 5개: `REQUESTED`(빈 버스 찾는 중) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 최대 대기 15분 안에 못 잡으면 `REJECTED`.
-- `REQUESTED`·`REJECTED`·`COMPLETED`일 때 `bus`는 `null`, `route`·`path`는 `[]`, ETA는 `null`. `ONBOARD`일 때 `etaPickupMin`은 `null`.
+- `status`는 6개: `REQUESTED`(빈 버스 찾는 중) → `ASSIGNED`(버스 오는 중) → `ONBOARD`(탑승 중) → `COMPLETED`(하차 완료). 최대 대기 15분 안에 못 잡으면 `REJECTED`. 승객이 취소하면 `CANCELED` (11/18 추가).
+- `REQUESTED`·`REJECTED`·`COMPLETED`·`CANCELED`일 때 `bus`는 `null`, `route`·`path`는 `[]`, ETA는 `null`. `ONBOARD`일 때 `etaPickupMin`은 `null`. 앱 조회는 `COMPLETED`·`REJECTED`·`CANCELED`에서 멈춘다.
+- **호출 취소** (11/17 재열 제안, 11/18 합의): `REQUESTED`·`ASSIGNED`만 → 200 + `CallDetail`. 이미 `CANCELED`면 다시 보내도 200 같은 결과. `ONBOARD`·`COMPLETED`·`REJECTED`면 400, 모르는 `callId`는 404. 05:00 뒤에도 취소는 된다. 버스가 이미 그 정류장으로 가는 중이면 거기까지는 가고 다음 경유지로 가며, 남은 승객 ETA는 다시 계산된다(빨라질 수만 있음). 인증은 하지 않는다 (시연 범위).
+- **이용 내역** (11/18): `userId`로 보낸 호출만, 최근 것부터 최대 50건, 진행 중인 호출 포함. 호출한 적 없는 `userId`는 `200 []`. 시각은 시뮬 시각 `"HH:mm"`이고 아직 안 일어났으면 `null`. `busId`는 배정된 적 없으면 `null`. 서버 메모리에 있어서 서버를 껐다 켜거나 웹 관제 "처음부터 다시"를 누르면 비워진다. `userId`는 1~128자 문자열이고, 문자열이 아니면 400.
 - ETA는 "지금부터 몇 분 뒤"(시뮬레이션 분). `simClock`은 서버 시뮬레이션 시각 `"HH:mm"`.
 - `route`는 버스가 앞으로 들를 정류장 순서. 다른 사람의 `callId`가 섞여 있으면 그게 합승이다.
 - `path`는 버스 현재 위치부터 남은 노선을 따라가는 **도로 좌표** 목록(`MapPoint` 배열). 첫 점 = 버스 위치, 끝 점 = `CallDetail`은 내 하차 정류장, `GET /buses`는 마지막 경유지. 서버가 OSM 도로 최단 경로로 채운다 (B6, 11/12). 앱은 받은 좌표를 그대로 잇는다. `path`가 비어 있으면 버스 위치와 `route` 정류장들을 직선으로 잇는 코드도 남겨 둔다 (앱 코드는 두 경우를 다 처리)
 - `load`는 지금 타고 있는 **인원 수 합**(호출 수가 아님).
 - 지도 좌표 범위(`north`/`south`/`west`/`east`)는 이미지의 위·아래·왼쪽·오른쪽 끝의 위도·경도다.
-- 모르는 `callId` → HTTP 404. 잘못된 요청(같은 정류장, 인원 범위 밖)과 운행 시간(05:00)이 끝난 뒤의 호출 → HTTP 400. 400·404 본문은 `{ "error": "이유" }`라서 앱은 `error`를 그대로 보여 주면 된다 (11/12).
+- 모르는 `callId` → HTTP 404. 잘못된 요청(같은 정류장, 인원 범위 밖, 잘못된 `userId`, 취소할 수 없는 상태)과 운행 시간(05:00)이 끝난 뒤의 호출 → HTTP 400. 400·404 본문은 `{ "error": "이유" }`라서 앱은 `error`를 그대로 보여 주면 된다 (11/12).
 
 ## 4. 앱 데이터 클래스 (`com.dalmuri.bus.data.model`)
 
@@ -145,9 +157,9 @@ data class RouteStop(
     val pickups: List<String>, val dropoffs: List<String>,
 )
 
-enum class CallStatus { REQUESTED, ASSIGNED, ONBOARD, COMPLETED, REJECTED }
+enum class CallStatus { REQUESTED, ASSIGNED, ONBOARD, COMPLETED, REJECTED, CANCELED }
 
-data class CallRequest(val originId: String, val destId: String, val partySize: Int)
+data class CallRequest(val originId: String, val destId: String, val partySize: Int, val userId: String? = null)
 
 data class CallResponse(val callId: String, val status: CallStatus, val busId: String?)
 
@@ -156,6 +168,12 @@ data class CallDetail(
     val originId: String, val destId: String,
     val simClock: String, val etaPickupMin: Double?, val etaDropoffMin: Double?,
     val bus: BusInfo?, val route: List<RouteStop>, val path: List<MapPoint>,
+)
+
+data class CallHistory(   // GET /users/{userId}/calls 의 원소 (11/18)
+    val callId: String, val status: CallStatus, val originId: String, val destId: String,
+    val partySize: Int, val busId: String?,
+    val requestClock: String, val pickupClock: String?, val dropoffClock: String?, val canceledClock: String?,
 )
 ```
 

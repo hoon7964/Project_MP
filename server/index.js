@@ -36,6 +36,8 @@ app.get('/map/image', (req, res) => send(res, api.getMapImage()));
 app.post('/calls', (req, res) => send(res, api.postCall(req.body)));
 app.get('/calls/:callId', (req, res) => send(res, api.getCall(req.params.callId)));
 app.get('/buses', (req, res) => send(res, api.getBuses()));
+app.post('/calls/:callId/cancel', (req, res) => send(res, api.postCancel(req.params.callId)));
+app.get('/users/:userId/calls', (req, res) => send(res, api.getUserCalls(req.params.userId)));
 // 관제 전용
 app.get('/calls', (req, res) => send(res, api.listCalls()));
 app.get('/sim', (req, res) => send(res, api.getSim()));
