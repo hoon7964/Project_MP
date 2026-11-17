@@ -7,9 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,10 +18,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -31,24 +30,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dalmuri.bus.data.model.StopKind
 import com.dalmuri.bus.ui.theme.BoardBlue
 import com.dalmuri.bus.ui.theme.MoonGold
 
 /**
  * 메인 화면 = 지도 영역 + 하단 시트.
  *  - 지도 영역: MapLayer (지도 이미지 + 정류장·노선·버스, 핀치 줌·드래그, 정류장 누르기) + 범례 + 출처
- *  - 하단 시트: F6(호출)·F7(상태 5종)에서 내용을 채운다.
+ *  - 하단 시트: CallSheet (F6 호출). F7에서 호출 뒤 상태 시트 5종으로 바뀐다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(vm: MapViewModel = viewModel(factory = MapViewModel.Factory)) {
     val state by vm.state.collectAsState()
+    val scaffoldState = rememberBottomSheetScaffoldState()
+
+    // 정류장을 누르면 시트를 펼쳐서 정보 카드와 버튼이 보이게
+    LaunchedEffect(state.selectedStopId) {
+        if (state.selectedStopId != null) scaffoldState.bottomSheetState.expand()
+    }
 
     BottomSheetScaffold(
+        scaffoldState = scaffoldState,
         sheetPeekHeight = 170.dp,  // 시트가 접혀 있을 때 보이는 높이
         sheetContainerColor = MaterialTheme.colorScheme.surface,
-        sheetContent = { SheetPlaceholder(state, onDemoTrip = vm::startDemoTrip) },
+        sheetContent = {
+            CallSheet(
+                state = state,
+                onStopTap = vm::onStopTap,
+                onSetOrigin = vm::setOrigin,
+                onSetDest = vm::setDest,
+                onReset = vm::resetRoute,
+                onPartySize = vm::setPartySize,
+                onCall = vm::requestCall,
+            )
+        },
     ) { _ ->
         // 지도는 시트 뒤까지 화면 전체를 채운다
         Box(
@@ -61,14 +76,14 @@ fun MapScreen(vm: MapViewModel = viewModel(factory = MapViewModel.Factory)) {
             val info = state.mapInfo
             when {
                 image != null && info != null -> {
-                    val trip = state.demoTrip
+                    val trip = state.trip
                     MapLayer(
                         mapInfo = info,
                         mapImage = image,
                         stops = state.stops,
                         selectedStopId = state.selectedStopId,
-                        originId = trip?.originId,
-                        destId = trip?.destId,
+                        originId = state.originId,
+                        destId = state.destId,
                         bus = trip?.bus,
                         route = trip?.route.orEmpty(),
                         path = trip?.path.orEmpty(),
@@ -125,53 +140,6 @@ private fun LegendRow(color: Color, title: String, desc: String) {
         Column {
             Text(title, style = MaterialTheme.typography.labelMedium)
             Text(desc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun SheetPlaceholder(state: MapUiState, onDemoTrip: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp)
-            .navigationBarsPadding(),
-    ) {
-        Text("어디서 타고 어디서 내릴까요?", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-
-        // 지도에서 누른 정류장 (F6에서 정보 카드 + [여기서 출발] [여기로 도착]으로 바뀜)
-        val selected = state.stops.find { it.stopId == state.selectedStopId }
-        Text(
-            if (selected == null) {
-                "지도에서 정류장 점을 눌러 보세요"
-            } else {
-                val kind = if (selected.kind == StopKind.HUB) "승차 거점" else "주거지"
-                "선택: ${selected.name} (${selected.stopId}) · $kind"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "정류장 ${state.stops.size}개 · 지도 ${state.mapInfo?.mapId ?: "-"}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        // ── F5 확인용 임시 (F7에서 지움): 상봉역 → 신내동성3차 호출을 Fake로 돌려서 버스·노선 그리기 확인 ──
-        Spacer(Modifier.height(12.dp))
-        val trip = state.demoTrip
-        if (trip != null) {
-            Text(
-                "임시 호출 ${trip.callId} · ${trip.simClock} ${trip.status} · 버스 ${trip.bus?.busId ?: "-"} · 남은 정류장 ${trip.route.size}곳",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-        }
-        OutlinedButton(onClick = onDemoTrip) {
-            Text("버스·노선 그리기 확인 (임시)")
         }
     }
 }

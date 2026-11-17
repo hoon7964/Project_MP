@@ -1,7 +1,6 @@
 package com.dalmuri.bus.ui.map
 
 import android.graphics.BitmapFactory
-import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
@@ -16,6 +15,7 @@ import com.dalmuri.bus.data.model.CallStatus
 import com.dalmuri.bus.data.model.MapInfo
 import com.dalmuri.bus.data.model.Stop
 import com.dalmuri.bus.data.remote.DalmuriApi
+import com.dalmuri.bus.data.remote.isNotFound
 import com.dalmuri.bus.data.remote.toUserMessage
 import com.dalmuri.bus.data.repository.MapRepository
 import com.dalmuri.bus.data.repository.StopRepository
@@ -37,13 +37,22 @@ data class MapUiState(
     val mapInfo: MapInfo? = null,
     val mapImage: ImageBitmap? = null,  // 2400×2306 이미지를 한 번만 풀어서 들고 있음 (약 22MB)
     val error: String? = null,
-    val selectedStopId: String? = null, // 지도에서 누른 정류장
-    val demoTrip: CallDetail? = null,   // F5 확인용 임시 호출 (F7의 TripViewModel로 바뀜)
+    // ── F6 호출 ──
+    val selectedStopId: String? = null, // 지도·목록에서 누른 정류장 (정보 카드에 보임)
+    val originId: String? = null,       // 출발(승차)
+    val destId: String? = null,         // 도착(하차)
+    val partySize: Int = 1,             // 탑승 인원 1~3명
+    val calling: Boolean = false,       // POST /calls 기다리는 중
+    val callId: String? = null,         // 받은 배차 ID
+    val message: String? = null,        // 사용자에게 보여 줄 안내·에러 문구
+    // ── 임시: F7에서 TripViewModel로 옮긴다 ──
+    val trip: CallDetail? = null,
 )
 
 /**
- * 지도 화면 ViewModel. 화면이 처음 뜰 때 정류장·지도를 저장소에서 꺼낸다
- * (첫 실행이면 서버에서 받아 Room에 저장, 두 번째부터는 Room에서만).
+ * 지도 화면 ViewModel.
+ *  - F4: 화면이 처음 뜰 때 정류장·지도를 저장소에서 꺼낸다
+ *  - F6: 출발·도착·인원을 고르고 호출해서 배차 ID(callId)를 받는다
  */
 class MapViewModel(
     private val stopRepository: StopRepository,
@@ -75,29 +84,83 @@ class MapViewModel(
         }
     }
 
-    /** 지도에서 정류장을 누름 (빈 곳을 누르면 null → 선택 해제) */
+    // ───────── F6: 정류장 고르기 ─────────
+
+    /** 지도 점이나 목록에서 정류장을 누름 → 정보 카드. 빈 곳을 누르면 null → 카드 닫힘 */
     fun onStopTap(stop: Stop?) {
-        _state.update { it.copy(selectedStopId = stop?.stopId) }
+        _state.update { it.copy(selectedStopId = stop?.stopId, message = null) }
     }
 
-    // ── F5 확인용 임시: 시연 기본 경로로 호출하고 2초마다 상태를 받아 지도에 그림. F7에서 TripViewModel로 바꾼다 ──
-    private var demoJob: Job? = null
+    /** [여기서 출발] */
+    fun setOrigin(stop: Stop) {
+        if (stop.stopId == _state.value.destId) {
+            _state.update { it.copy(message = "도착과 같은 정류장은 출발로 고를 수 없어요") }
+            return
+        }
+        _state.update { it.copy(originId = stop.stopId, selectedStopId = null, message = null) }
+    }
 
-    fun startDemoTrip() {
-        demoJob?.cancel()
-        demoJob = viewModelScope.launch {
+    /** [여기로 도착] */
+    fun setDest(stop: Stop) {
+        if (stop.stopId == _state.value.originId) {
+            _state.update { it.copy(message = "출발과 같은 정류장은 도착으로 고를 수 없어요") }
+            return
+        }
+        _state.update { it.copy(destId = stop.stopId, selectedStopId = null, message = null) }
+    }
+
+    /** [다시 고르기]: 출발·도착을 비움 */
+    fun resetRoute() {
+        trackJob?.cancel()
+        _state.update { it.copy(originId = null, destId = null, selectedStopId = null, callId = null, trip = null, message = null) }
+    }
+
+    fun setPartySize(n: Int) {
+        _state.update { it.copy(partySize = n.coerceIn(1, 3)) }
+    }
+
+    // ───────── F6: 호출 ─────────
+
+    /** [호출하기] → POST /calls → 배차 ID 저장 */
+    fun requestCall() {
+        val s = _state.value
+        val origin = s.originId ?: return
+        val dest = s.destId ?: return
+        if (s.calling) return
+
+        _state.update { it.copy(calling = true, message = null) }
+        viewModelScope.launch {
             try {
-                val res = api.createCall(CallRequest(originId = "07003", destId = "07275", partySize = 1))
+                val res = api.createCall(CallRequest(originId = origin, destId = dest, partySize = s.partySize))
+                _state.update { it.copy(calling = false, callId = res.callId) }
+                startTracking(res.callId)  // 임시 (F7에서 TripViewModel로)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 400이면 서버가 준 이유(예: 운행 시간 끝남)를 그대로 보여 줌
+                _state.update { it.copy(calling = false, message = e.toUserMessage()) }
+            }
+        }
+    }
+
+    // ── 임시 추적: 2초마다 상태를 받아 지도에 그림. F7에서 TripViewModel + 상태 시트 5종으로 바꾼다 ──
+    private var trackJob: Job? = null
+
+    private fun startTracking(callId: String) {
+        trackJob?.cancel()
+        trackJob = viewModelScope.launch {
+            try {
                 while (true) {
-                    val detail = api.getCall(res.callId)
-                    _state.update { it.copy(demoTrip = detail) }
+                    val detail = api.getCall(callId)
+                    _state.update { it.copy(trip = detail) }
                     if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED) break
                     delay(2_000)
                 }
             } catch (e: CancellationException) {
-                throw e  // 버튼을 다시 눌러 이전 호출을 멈춘 경우: 에러 아님
+                throw e
             } catch (e: Exception) {
-                Log.e("MapViewModel", "임시 호출 실패: ${e.toUserMessage()}", e)
+                val msg = if (e.isNotFound()) "호출 정보가 없어요, 다시 호출해 주세요" else e.toUserMessage()
+                _state.update { it.copy(trip = null, callId = null, message = msg) }
             }
         }
     }
