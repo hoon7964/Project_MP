@@ -7,7 +7,7 @@
 
 시범 지역: 서울 중랑구 봉화산 일대 (태릉입구역 · 봉화산역 · 신내역 · 상봉역 · 망우역, 약 3.0km × 2.8km)
 운행 시간: 심야 01:30 ~ 05:00 (시뮬레이션 시각)
-진행 상황: 🚧 개발 중 — 서버(배차 엔진·도로 경로·웹 관제) 구현 완료, 안드로이드 앱 개발 중 <!-- 날짜와 함께 갱신 -->
+진행 상황: 🚧 개발 중 — 서버(배차 엔진·도로 경로·웹 관제) 구현 완료, 안드로이드 앱 개발 완료
 기획 단계: Project_Urban-Issue-with-ORACLE에서 제안한 달무리버스를 실제 앱·서버로 구현
 
 주요 기능
@@ -20,8 +20,11 @@ Android: Kotlin, Jetpack Compose, Retrofit, Room, Navigation-Compose, Firebase A
 Server: Node.js 22.13+, Express, SQLite, sharp
 데이터: 서울시 버스정류소 위치·노선 공공데이터, OpenStreetMap 도로망
 웹 관제: Leaflet (서버가 직접 제공해 오프라인 시연 가능)
+
 폴더 구조
+
 text
+
 Project_MP/
 ├── DalmuriBus/   # 안드로이드 앱 (프론트)
 ├── server/       # 배차·시뮬레이션 서버 + 웹 관제 (백)
