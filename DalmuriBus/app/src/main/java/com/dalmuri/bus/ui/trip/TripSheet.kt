@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -88,6 +90,8 @@ fun TripSheet(
             CallStatus.COMPLETED -> {
                 Title("하차 완료", Ok)
                 Line("${nameOf(d?.destId)}에 내렸어요. 조심히 들어가세요!")
+                Spacer(Modifier.height(12.dp))
+                TripSummaryCard(trip.record)
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("처음으로") }
             }
@@ -142,4 +146,48 @@ private fun RouteRow(label: String, color: Color, name: String) {
         Box(Modifier.size(10.dp).background(color, CircleShape))
         Text(name, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/** 하차 요약 카드: 기다린 시간, 탄 시간, 함께 탄 사람 (시뮬레이션 시각 기준) */
+@Composable
+private fun TripSummaryCard(r: TripRecord) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("이번 이용 요약", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            SummaryRow("기다린 시간", durationText(r.waitMin), "${r.requestClock ?: "-"} 호출 → ${r.pickupClock ?: "-"} 탑승")
+            SummaryRow("탄 시간", durationText(r.rideMin), "${r.pickupClock ?: "-"} 탑승 → ${r.dropoffClock ?: "-"} 하차")
+            SummaryRow(
+                "함께 탄 사람",
+                if (r.maxOthers == 0 && r.sharedCallIds.isEmpty()) "혼자 탔어요" else "최대 ${r.maxOthers}명",
+                if (r.sharedCallIds.isEmpty()) null else "합승 호출 ${r.sharedCallIds.size}건",
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "시뮬레이션 시각 기준이에요",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String, sub: String?) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(88.dp))
+        Column {
+            Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            if (sub != null) {
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** 분 → "약 7분" (시각이 분 단위라 0이면 "1분 미만") */
+private fun durationText(min: Int?): String = when {
+    min == null -> "-"
+    min == 0 -> "1분 미만"
+    else -> "약 ${min}분"
 }

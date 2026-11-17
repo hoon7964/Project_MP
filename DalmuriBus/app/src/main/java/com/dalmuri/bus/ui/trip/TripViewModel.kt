@@ -28,6 +28,7 @@ data class TripUiState(
     val detail: CallDetail? = null, // 마지막으로 받은 GET /calls/{callId} 응답
     val message: String? = null,    // 연결 실패 등 안내 (조회는 계속함)
     val lost: Boolean = false,      // 404: 서버 초기화·재시작으로 호출이 사라짐 → 다시 호출해야 함
+    val record: TripRecord = TripRecord(), // 하차 요약용 (대기·탑승 시각, 함께 탄 사람)
 )
 
 /**
@@ -64,7 +65,7 @@ class TripViewModel(
             appVisible.first { it }  // 앱이 안 보이면 다시 보일 때까지 기다림
             try {
                 val detail = api.getCall(callId)
-                _state.update { it.copy(detail = detail, message = null) }
+                _state.update { it.copy(detail = detail, message = null, record = it.record.update(detail)) }
                 if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED) return
             } catch (e: CancellationException) {
                 throw e
