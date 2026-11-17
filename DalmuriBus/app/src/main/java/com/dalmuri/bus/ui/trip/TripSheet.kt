@@ -82,8 +82,8 @@ fun TripSheet(
             // ONBOARD: 탑승 중
             CallStatus.ONBOARD -> {
                 Title("탑승 중 · ${minutes(d?.etaDropoffMin)} 후 하차", MoonGold)
-                // route 마지막이 내 하차 정류장이라 그 앞까지가 경유 정류장
-                Line("남은 경유 정류장 ${((d?.route?.size ?: 0) - 1).coerceAtLeast(0)}곳 · 함께 탄 인원 ${d?.bus?.load ?: 0}명")
+                // route 마지막이 내 하차 정류장이라 그 앞까지가 경유 정류장. load는 나까지 포함한 버스 전체 인원
+                Line("남은 경유 정류장 ${((d?.route?.size ?: 0) - 1).coerceAtLeast(0)}곳 · 버스 탑승 인원 ${d?.bus?.load ?: 0}명")
             }
 
             // COMPLETED: 하차 완료

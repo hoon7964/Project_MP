@@ -106,7 +106,8 @@ fun MapScreen(
             when {
                 image != null && info != null -> {
                     // 호출 중이면 받은 상태로, 아니면 고르고 있는 출발·도착으로 그림
-                    val detail = if (state.callId != null) trip.detail else null
+                    // 호출이 서버에서 사라지면(lost) 예전 버스·노선은 지우고 출발·도착 표시만 남김
+                    val detail = if (state.callId != null && !trip.lost) trip.detail else null
                     val bus = rememberSmoothBus(detail?.bus, AppConfig.POLL_MS.toInt())
                     MapLayer(
                         mapInfo = info,
