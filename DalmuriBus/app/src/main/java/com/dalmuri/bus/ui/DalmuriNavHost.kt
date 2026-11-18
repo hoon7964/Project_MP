@@ -47,7 +47,16 @@ fun DalmuriNavHost() {
 
         // 이용 내역 (추가 기능, 11/18). 뒤로가기 → 지도 (호출 중이던 상태 그대로)
         composable(Routes.HISTORY) {
-            HistoryScreen(onBack = { nav.popBackStack() })
+            HistoryScreen(
+                onBack = { nav.popBackStack() },
+                onLogout = {
+                    FirebaseAuth.getInstance().signOut()
+                    // 지도·이용 내역을 뒤로가기 목록에서 모두 지우고 로그인으로 (호출 추적도 같이 끝남)
+                    nav.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.MAP) { inclusive = true }
+                    }
+                },
+            )
         }
     }
 }

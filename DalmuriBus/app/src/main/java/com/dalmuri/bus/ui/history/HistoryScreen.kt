@@ -18,15 +18,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,11 +46,13 @@ import com.dalmuri.bus.ui.theme.MoonGold
 import com.dalmuri.bus.ui.theme.Ok
 import com.dalmuri.bus.ui.theme.Warn
 import com.dalmuri.bus.ui.trip.minutesBetween
+import com.google.firebase.auth.FirebaseAuth
 
-/** 이용 내역 화면 (추가 기능): 최근 호출부터 카드 목록. 위에 [← 지도] [새로고침] */
+/** 이용 내역 화면 (추가 기능): 최근 호출부터 카드 목록. 위에 [← 지도] [새로고침], 아래에 계정 + [로그아웃] */
 @Composable
 fun HistoryScreen(
     onBack: () -> Unit,
+    onLogout: () -> Unit,  // [로그아웃] → 확인 → 로그인 화면
     vm: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory),
 ) {
     val state by vm.state.collectAsState()
@@ -66,7 +73,7 @@ fun HistoryScreen(
             TextButton(onClick = vm::load, enabled = !state.loading) { Text("새로고침") }
         }
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             when {
                 state.loading -> CircularProgressIndicator()
 
@@ -94,6 +101,36 @@ fun HistoryScreen(
                 }
             }
         }
+
+        // 아래: 로그인한 계정 + [로그아웃] (시연 때 로그인 화면을 다시 보여 줄 수 있게, 11/18)
+        LogoutRow(onLogout)
+    }
+}
+
+@Composable
+private fun LogoutRow(onLogout: () -> Unit) {
+    var asking by remember { mutableStateOf(false) }
+    val email = remember { FirebaseAuth.getInstance().currentUser?.email ?: "" }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            email,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(onClick = { asking = true }) { Text("로그아웃") }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text("로그아웃할까요?") },
+            text = { Text("진행 중인 호출이 있으면 앱에서 더 이상 따라가지 않아요. 저장된 정류장·지도는 그대로 남아요.") },
+            confirmButton = { TextButton(onClick = { asking = false; onLogout() }) { Text("로그아웃") } },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text("취소") } },
+        )
     }
 }
 

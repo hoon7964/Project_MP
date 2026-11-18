@@ -12,6 +12,7 @@ import com.dalmuri.bus.data.model.CallStatus
 import com.dalmuri.bus.data.remote.DalmuriApi
 import com.dalmuri.bus.data.remote.isNotFound
 import com.dalmuri.bus.data.remote.toUserMessage
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +87,7 @@ class TripViewModel(
             try {
                 val detail = api.getCall(callId)
                 _state.update { it.copy(detail = detail, message = null, record = it.record.update(detail)) }
+                if (detail.status == CallStatus.COMPLETED) syncClocksFromServer(callId)
                 if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED || detail.status == CallStatus.CANCELED) return
             } catch (e: CancellationException) {
                 throw e
@@ -99,6 +101,31 @@ class TripViewModel(
                 _state.update { it.copy(message = e.toUserMessage()) }
             }
             delay(AppConfig.POLL_MS)
+        }
+    }
+
+    /**
+     * 하차 완료 때 요약 시각을 서버 이용 내역(GET /users/{uid}/calls)의 기록으로 바꾼다.
+     * 2초 조회로 잡은 시각은 최대 한 번의 조회 간격만큼 늦을 수 있어서, 서버가 기록한 정확한 시각을 쓴다.
+     * 실패하면(서버 초기화 등) 조회로 잡은 시각을 그대로 둔다.
+     */
+    private suspend fun syncClocksFromServer(callId: String) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        try {
+            val h = api.getHistory(uid).find { it.callId == callId } ?: return
+            _state.update {
+                it.copy(
+                    record = it.record.copy(
+                        requestClock = h.requestClock,
+                        pickupClock = h.pickupClock ?: it.record.pickupClock,
+                        dropoffClock = h.dropoffClock ?: it.record.dropoffClock,
+                    ),
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 요약은 조회로 잡은 시각으로 충분하니 조용히 넘어감
         }
     }
 
