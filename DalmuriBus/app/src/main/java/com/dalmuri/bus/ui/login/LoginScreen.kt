@@ -1,5 +1,6 @@
 package com.dalmuri.bus.ui.login
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -21,11 +22,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dalmuri.bus.R
 
 /**
  * 로그인·회원가입 화면 하나.
@@ -51,6 +54,13 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // 달무리 버스 그림 (앱 아이콘과 같은 이미지, res/drawable-nodpi/dalmuri_bus.png)
+        Image(
+            painter = painterResource(R.drawable.dalmuri_bus),
+            contentDescription = "달무리버스",
+            modifier = Modifier.size(180.dp),
+        )
+        Spacer(Modifier.height(12.dp))
         Text("달무리버스", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(32.dp))
 

@@ -16,6 +16,7 @@ import com.dalmuri.bus.data.remote.DalmuriApi
 import com.dalmuri.bus.data.remote.toUserMessage
 import com.dalmuri.bus.data.repository.MapRepository
 import com.dalmuri.bus.data.repository.StopRepository
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -129,7 +130,9 @@ class MapViewModel(
         _state.update { it.copy(calling = true, message = null) }
         viewModelScope.launch {
             try {
-                val res = api.createCall(CallRequest(originId = origin, destId = dest, partySize = s.partySize))
+                // userId = Firebase uid → 서버 이용 내역에 남음 (추가 기능, 11/18)
+                val userId = FirebaseAuth.getInstance().currentUser?.uid
+                val res = api.createCall(CallRequest(originId = origin, destId = dest, partySize = s.partySize, userId = userId))
                 _state.update { it.copy(calling = false, callId = res.callId) }
             } catch (e: CancellationException) {
                 throw e

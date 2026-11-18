@@ -14,12 +14,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,7 +41,8 @@ import com.dalmuri.bus.ui.theme.Warn
 import java.util.Locale
 
 /**
- * 호출 뒤 상태 시트 5종 (F7): 배차 중 / 버스 오는 중 / 탑승 중 / 하차 완료 / 배차 불가.
+ * 호출 뒤 상태 시트 (F7): 배차 중 / 버스 오는 중 / 탑승 중 / 하차 완료 / 배차 불가
+ * + 추가 기능: 배차 중·버스 오는 중에 [호출 취소], 취소됨.
  * 위쪽 몇 줄만으로 상태를 알 수 있게 (시트를 접어도 보이게) 중요한 것부터 둔다.
  */
 @Composable
@@ -43,6 +51,7 @@ fun TripSheet(
     stops: List<Stop>,
     onHome: () -> Unit,   // 하차 완료 → 처음으로
     onRetry: () -> Unit,  // 배차 불가 / 호출 사라짐 → 다시 호출
+    onCancel: () -> Unit, // [호출 취소] (확인 창에서 [취소하기]를 누르면)
 ) {
     val d = trip.detail
     fun nameOf(id: String?) = stops.find { it.stopId == id }?.name ?: id ?: "-"
@@ -71,12 +80,14 @@ fun TripSheet(
                     Title("배차 중", BoardBlue)
                 }
                 Line("태울 수 있는 버스를 찾고 있어요")
+                CancelButton(trip.canceling, onCancel)
             }
 
             // ASSIGNED: 버스 오는 중
             CallStatus.ASSIGNED -> {
                 Title("${busNumber(d?.bus?.busId)} 배정 · ${minutes(d?.etaPickupMin)} 후 탑승", BoardBlue)
                 Line("현재 탑승 인원 ${d?.bus?.load ?: 0}/${d?.bus?.capacity ?: 0}명")
+                CancelButton(trip.canceling, onCancel)
             }
 
             // ONBOARD: 탑승 중
@@ -102,6 +113,14 @@ fun TripSheet(
                 Line("15분 안에 태울 수 있는 버스가 없었어요. 다시 호출해 주세요.")
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("다시 호출") }
+            }
+
+            // CANCELED: 내가 취소함 (추가 기능)
+            CallStatus.CANCELED -> {
+                Title("호출 취소됨", MaterialTheme.colorScheme.onSurfaceVariant)
+                Line("호출을 취소했어요. 필요하면 다시 호출해 주세요.")
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("처음으로") }
             }
         }
 
@@ -190,4 +209,27 @@ private fun durationText(min: Int?): String = when {
     min == null -> "-"
     min == 0 -> "1분 미만"
     else -> "약 ${min}분"
+}
+
+/** [호출 취소] + 확인 창. 잘못 눌러도 바로 취소되지 않게 한 번 더 묻는다 */
+@Composable
+private fun CancelButton(canceling: Boolean, onCancel: () -> Unit) {
+    var asking by remember { mutableStateOf(false) }
+    Spacer(Modifier.height(12.dp))
+    OutlinedButton(onClick = { asking = true }, enabled = !canceling, modifier = Modifier.fillMaxWidth()) {
+        Text(if (canceling) "취소하는 중…" else "호출 취소")
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text("호출을 취소할까요?") },
+            text = { Text("버스가 이미 오고 있어도 취소돼요. 탑승한 뒤에는 취소할 수 없어요.") },
+            confirmButton = {
+                TextButton(onClick = { asking = false; onCancel() }) { Text("취소하기") }
+            },
+            dismissButton = {
+                TextButton(onClick = { asking = false }) { Text("계속 기다리기") }
+            },
+        )
+    }
 }

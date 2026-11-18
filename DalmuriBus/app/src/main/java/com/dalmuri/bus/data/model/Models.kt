@@ -26,9 +26,9 @@ data class RouteStop(
     val pickups: List<String>, val dropoffs: List<String>,
 )
 
-enum class CallStatus { REQUESTED, ASSIGNED, ONBOARD, COMPLETED, REJECTED }
+enum class CallStatus { REQUESTED, ASSIGNED, ONBOARD, COMPLETED, REJECTED, CANCELED }
 
-data class CallRequest(val originId: String, val destId: String, val partySize: Int)
+data class CallRequest(val originId: String, val destId: String, val partySize: Int, val userId: String? = null)
 
 data class CallResponse(val callId: String, val status: CallStatus, val busId: String?)
 
@@ -37,4 +37,10 @@ data class CallDetail(
     val originId: String, val destId: String,
     val simClock: String, val etaPickupMin: Double?, val etaDropoffMin: Double?,
     val bus: BusInfo?, val route: List<RouteStop>, val path: List<MapPoint>,
+)
+
+data class CallHistory(   // GET /users/{userId}/calls 의 원소 (11/18)
+    val callId: String, val status: CallStatus, val originId: String, val destId: String,
+    val partySize: Int, val busId: String?,
+    val requestClock: String, val pickupClock: String?, val dropoffClock: String?, val canceledClock: String?,
 )

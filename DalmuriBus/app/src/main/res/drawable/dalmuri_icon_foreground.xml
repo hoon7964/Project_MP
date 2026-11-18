@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 앱 아이콘 그림: 달무리 버스 이미지. 적응형 아이콘은 108dp 중 가운데 66dp만 확실히 보이므로 둘레를 21dp 띄운다 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/dalmuri_bus"
+    android:inset="21dp" />

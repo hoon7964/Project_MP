@@ -1,6 +1,7 @@
 package com.dalmuri.bus.data.remote
 
 import com.dalmuri.bus.data.model.CallDetail
+import com.dalmuri.bus.data.model.CallHistory
 import com.dalmuri.bus.data.model.CallRequest
 import com.dalmuri.bus.data.model.CallResponse
 import com.dalmuri.bus.data.model.MapInfo
@@ -43,6 +44,14 @@ interface DalmuriApi {
     /** 내 배차 상태 (F7에서 2초마다) */
     @GET("calls/{callId}")
     suspend fun getCall(@Path("callId") callId: String): CallDetail
+
+    /** 호출 취소 (추가 기능). REQUESTED·ASSIGNED만 되고 나머지는 400 */
+    @POST("calls/{callId}/cancel")
+    suspend fun cancelCall(@Path("callId") callId: String): CallDetail
+
+    /** 내 이용 내역, 최근 것부터 최대 50건 (추가 기능). 서버 메모리라 재시작·초기화 때 비워짐 */
+    @GET("users/{userId}/calls")
+    suspend fun getHistory(@Path("userId") userId: String): List<CallHistory>
 
     companion object {
         /** 진짜 서버용 Retrofit 객체를 만든다 */

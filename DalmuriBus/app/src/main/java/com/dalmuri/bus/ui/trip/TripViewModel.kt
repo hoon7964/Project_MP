@@ -29,12 +29,13 @@ data class TripUiState(
     val message: String? = null,    // 연결 실패 등 안내 (조회는 계속함)
     val lost: Boolean = false,      // 404: 서버 초기화·재시작으로 호출이 사라짐 → 다시 호출해야 함
     val record: TripRecord = TripRecord(), // 하차 요약용 (대기·탑승 시각, 함께 탄 사람)
+    val canceling: Boolean = false,  // POST /calls/{callId}/cancel 기다리는 중
 )
 
 /**
  * 배차 추적 (F7). 교수님: "배차 ID로 주기적으로 요청해서 지도에 출력" (팀 결정 2초).
  * callId가 생기면 POLL_MS마다 GET /calls/{callId}를 부르고,
- * COMPLETED·REJECTED면 멈추고, 앱 화면이 안 보이면 다시 보일 때까지 쉰다.
+ * COMPLETED·REJECTED·CANCELED면 멈추고, 앱 화면이 안 보이면 다시 보일 때까지 쉰다.
  */
 class TripViewModel(
     private val api: DalmuriApi,
@@ -60,13 +61,32 @@ class TripViewModel(
         _state.value = TripUiState()
     }
 
+    /** [호출 취소] (추가 기능): REQUESTED·ASSIGNED만 취소됨. 탑승했으면 서버가 400 + 이유를 줌 */
+    fun cancel() {
+        val callId = _state.value.callId ?: return
+        if (_state.value.canceling) return
+        _state.update { it.copy(canceling = true, message = null) }
+        viewModelScope.launch {
+            try {
+                val detail = api.cancelCall(callId)
+                pollJob?.cancel()  // CANCELED면 더 조회할 필요 없음
+                _state.update { it.copy(detail = detail, canceling = false, record = it.record.update(detail)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 그사이 탑승했으면 400: 서버 문구를 보여 주고 조회는 계속
+                _state.update { it.copy(canceling = false, message = e.toUserMessage()) }
+            }
+        }
+    }
+
     private suspend fun poll(callId: String) {
         while (true) {
             appVisible.first { it }  // 앱이 안 보이면 다시 보일 때까지 기다림
             try {
                 val detail = api.getCall(callId)
                 _state.update { it.copy(detail = detail, message = null, record = it.record.update(detail)) }
-                if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED) return
+                if (detail.status == CallStatus.COMPLETED || detail.status == CallStatus.REJECTED || detail.status == CallStatus.CANCELED) return
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -1,7 +1,6 @@
 package com.dalmuri.bus.ui.map
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,21 +18,22 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dalmuri.bus.data.model.BusInfo
@@ -47,13 +47,13 @@ import com.dalmuri.bus.ui.theme.Ink
 import com.dalmuri.bus.ui.theme.MoonGold
 import com.dalmuri.bus.ui.theme.Night
 import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * 지도 레이어 두 장 (교수님: "지도 레이아웃 하나 + 그 위에 겹쳐서 점을 찍는다").
- *  - 아래 장 Image: 서버에서 받아 저장해 둔 지도 이미지
- *  - 위 장 Canvas: 정류장 점, 선택·출발·도착 강조, 노선선, 버스 🚌
- * 핀치 줌·드래그는 두 장에 똑같은 변환(zoom, pan)을 적용해서 같이 움직인다.
+ *  - 아래 장: 서버에서 받아 저장해 둔 지도 이미지
+ *  - 위 장: 정류장 점, 선택·출발·도착 강조, 노선선, 버스 마커(BusMarker.kt)
+ * 두 장을 같은 Canvas에 같은 식(toScreen)으로 그려서, 핀치 줌·드래그를 해도 점이 지도와 어긋나지 않는다.
  * 점 크기는 줌해도 그대로 (화면 기준 크기).
  */
 @Composable
@@ -70,7 +70,7 @@ fun MapLayer(
     onStopTap: (Stop?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var zoom by remember { mutableFloatStateOf(1f) }        // 1 = 화면에 지도 전체가 들어감
+    var zoom by remember { mutableFloatStateOf(1f) }        // 1 = 지도가 화면을 꽉 채움
     var pan by remember { mutableStateOf(Offset.Zero) }    // 화면 중앙에서 얼마나 옮겼는지 (px)
     val currentOnStopTap by rememberUpdatedState(onStopTap)
     val textMeasurer = rememberTextMeasurer()
@@ -79,7 +79,8 @@ fun MapLayer(
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
-        val fit = min(w / mapInfo.widthPx, h / mapInfo.heightPx)  // 줌 1일 때 이미지 1px → 화면 몇 px
+        // 줌 1일 때 이미지 1px → 화면 몇 px. max = 지도가 화면을 꽉 채움(남는 쪽은 잘리고 드래그로 봄). min이면 전체가 들어가고 위아래가 빔
+        val fit = max(w / mapInfo.widthPx, h / mapInfo.heightPx)
 
         /** 위도·경도 → 화면 좌표. 이미지 중심이 (화면 중심 + pan)에 오고, fit × zoom 배로 커진다 */
         fun toScreen(lat: Double, lng: Double): Offset {
@@ -99,22 +100,7 @@ fun MapLayer(
             return Offset(p.x.coerceIn(-maxX, maxX), p.y.coerceIn(-maxY, maxY))
         }
 
-        // ── 아래 장: 지도 이미지. graphicsLayer가 화면 중심 기준으로 zoom배 키우고 pan만큼 옮김 ──
-        Image(
-            bitmap = mapImage,
-            contentDescription = "봉화산 일대 지도",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = zoom
-                    scaleY = zoom
-                    translationX = pan.x
-                    translationY = pan.y
-                },
-        )
-
-        // ── 위 장: 점·선·버스. 손가락 입력도 여기서 받음 ──
+        // 지도 이미지 + 점·선·버스를 한 Canvas에. 손가락 입력도 여기서 받음
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -137,6 +123,18 @@ fun MapLayer(
                     }
                 },
         ) {
+            // 0) 아래 장: 지도 이미지. 이미지 왼쪽 위 = toScreen식에서 픽셀 (0, 0), 크기 = 이미지 × fit × zoom
+            val k = fit * zoom
+            drawImage(
+                image = mapImage,
+                dstOffset = IntOffset(
+                    (w / 2 + pan.x - mapInfo.widthPx / 2f * k).roundToInt(),
+                    (h / 2 + pan.y - mapInfo.heightPx / 2f * k).roundToInt(),
+                ),
+                dstSize = IntSize((mapInfo.widthPx * k).roundToInt(), (mapInfo.heightPx * k).roundToInt()),
+                filterQuality = FilterQuality.Medium,
+            )
+
             // 1) 노선선: path(도로 좌표)가 있으면 그대로, 없으면 버스 → route 정류장 직선
             val line: List<Offset> = if (path.isNotEmpty()) {
                 path.map { toScreen(it.lat, it.lng) }
@@ -172,14 +170,8 @@ fun MapLayer(
             stops.find { it.stopId == originId }?.let { markStop(textMeasurer, toScreen(it.lat, it.lng), BoardBlue, "출발") }
             stops.find { it.stopId == destId }?.let { markStop(textMeasurer, toScreen(it.lat, it.lng), MoonGold, "도착") }
 
-            // 4) 버스 🚌
-            bus?.let {
-                val c = toScreen(it.lat, it.lng)
-                drawCircle(Night, radius = 17.dp.toPx(), center = c)
-                drawCircle(Ink, radius = 17.dp.toPx(), center = c, style = Stroke(2.dp.toPx()))
-                val emoji = textMeasurer.measure("🚌", TextStyle(fontSize = 18.sp))
-                drawText(emoji, topLeft = c - Offset(emoji.size.width / 2f, emoji.size.height / 2f))
-            }
+            // 4) 버스: 직접 그린 버스 마커 (호차 색 + 번호, BusMarker.kt)
+            bus?.let { drawBus(textMeasurer, toScreen(it.lat, it.lng), it.busId) }
         }
     }
 }

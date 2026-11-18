@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.dalmuri.bus.data.model.BusInfo
 import com.dalmuri.bus.data.model.CallDetail
+import com.dalmuri.bus.data.model.CallHistory
 import com.dalmuri.bus.data.model.CallRequest
 import com.dalmuri.bus.data.model.CallResponse
 import com.dalmuri.bus.data.model.CallStatus
@@ -63,7 +64,7 @@ class FakeDalmuriApi(private val context: Context) : DalmuriApi {
         val callId = "c-$number"
         val busStart = stops.find { it.stopId == if (origin.stopId == "07001") "07440" else "07001" } ?: stops.first()
         val shareStop = if (number % 2 == 0) bestDetour(origin, dest) else null
-        calls[callId] = FakeCall(callId, origin, dest, body.partySize, busStart, shareStop, System.currentTimeMillis())
+        calls[callId] = FakeCall(callId, origin, dest, body.partySize, busStart, shareStop, System.currentTimeMillis(), body.userId)
 
         Log.d(TAG, "POST /calls ${origin.name} → ${dest.name} ${body.partySize}명 → $callId (합승 손님 ${if (shareStop != null) "있음" else "없음"})")
         CallResponse(callId, CallStatus.REQUESTED, null)
@@ -72,6 +73,29 @@ class FakeDalmuriApi(private val context: Context) : DalmuriApi {
     override suspend fun getCall(callId: String): CallDetail = withContext(Dispatchers.IO) {
         val call = calls[callId] ?: throw httpError(404, "호출 정보가 없어요. 다시 호출해 주세요")
         call.detailAt(System.currentTimeMillis())
+    }
+
+    override suspend fun cancelCall(callId: String): CallDetail = withContext(Dispatchers.IO) {
+        val call = calls[callId] ?: throw httpError(404, "호출 정보가 없어요. 다시 호출해 주세요")
+        val now = System.currentTimeMillis()
+        when (call.detailAt(now).status) {
+            CallStatus.REQUESTED, CallStatus.ASSIGNED -> {
+                val canceled = call.copy(canceledMs = now)
+                calls[callId] = canceled
+                canceled.detailAt(now)
+            }
+            CallStatus.CANCELED -> call.detailAt(now)  // 이미 취소한 걸 또 보내도 같은 결과 (진짜 서버와 같음)
+            else -> throw httpError(400, "탑승했거나 끝난 호출은 취소할 수 없어요")
+        }
+    }
+
+    override suspend fun getHistory(userId: String): List<CallHistory> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        calls.values
+            .filter { it.userId == userId }
+            .sortedByDescending { it.startMs }
+            .take(50)
+            .map { it.historyAt(now) }
     }
 
     // ───────── 아래는 가짜 시뮬레이션 계산 ─────────
@@ -84,6 +108,8 @@ class FakeDalmuriApi(private val context: Context) : DalmuriApi {
         val busStart: Stop,
         val shareStop: Stop?,   // 합승 손님(c-99)이 내리는 정류장. null이면 합승 없음
         val startMs: Long,
+        val userId: String?,
+        val canceledMs: Long? = null,  // 취소한 시각. null이면 취소 안 함
     ) {
         fun detailAt(nowMs: Long): CallDetail {
             val sec = (nowMs - startMs) / 1000.0
@@ -96,6 +122,8 @@ class FakeDalmuriApi(private val context: Context) : DalmuriApi {
             val sharedId = if (shareStop != null) SHARED_CALL_ID else null
 
             return when {
+                canceledMs != null -> ended(CallStatus.CANCELED, clock)
+
                 sec < REQUESTED_SEC -> ended(CallStatus.REQUESTED, clock)
 
                 sec < pickupAt -> {
@@ -129,6 +157,27 @@ class FakeDalmuriApi(private val context: Context) : DalmuriApi {
 
                 else -> ended(CallStatus.COMPLETED, clock)
             }
+        }
+
+        /** 이용 내역 한 줄. 가짜 서버는 호출마다 01:30부터 시각을 센다 */
+        fun historyAt(nowMs: Long): CallHistory {
+            val sec = (nowMs - startMs) / 1000.0
+            val pickupAt = REQUESTED_SEC + ASSIGNED_SEC
+            val dropAt = pickupAt + ONBOARD_SEC
+            val cancelSec = canceledMs?.let { (it - startMs) / 1000.0 }
+            val lastSec = cancelSec ?: sec  // 취소했으면 그 뒤 일은 안 일어남
+            return CallHistory(
+                callId = callId,
+                status = detailAt(nowMs).status,
+                originId = origin.stopId,
+                destId = dest.stopId,
+                partySize = partySize,
+                busId = if (lastSec >= REQUESTED_SEC) BUS_ID else null,
+                requestClock = simClock(0.0),
+                pickupClock = if (lastSec >= pickupAt) simClock(pickupAt) else null,
+                dropoffClock = if (lastSec >= dropAt) simClock(dropAt) else null,
+                canceledClock = cancelSec?.let { simClock(it) },
+            )
         }
 
         /** REQUESTED·COMPLETED: bus null, route·path 빈 배열, ETA null (공통 규약 3) */

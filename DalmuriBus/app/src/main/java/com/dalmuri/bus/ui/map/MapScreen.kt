@@ -17,6 +17,7 @@ import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,11 +40,13 @@ import com.dalmuri.bus.ui.trip.TripViewModel
 /**
  * 메인 화면 = 지도 영역 + 하단 시트.
  *  - 지도 영역: MapLayer (지도 이미지 + 정류장·노선·버스, 핀치 줌·드래그, 정류장 누르기) + 범례 + 출처
- *  - 하단 시트: 호출 전에는 CallSheet (F6), 호출 뒤에는 TripSheet 상태 5종 (F7)
+ *  - 하단 시트: 호출 전에는 CallSheet (F6), 호출 뒤에는 TripSheet (F7, 추가 기능 취소 포함)
+ *  - 오른쪽 위 [이용 내역] → HistoryScreen (추가 기능)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
+    onOpenHistory: () -> Unit = {},  // [이용 내역] → 이용 내역 화면 (추가 기능)
     vm: MapViewModel = viewModel(factory = MapViewModel.Factory),
     tripVm: TripViewModel = viewModel(factory = TripViewModel.Factory),
 ) {
@@ -80,6 +83,7 @@ fun MapScreen(
                         tripVm.clear()
                         vm.clearCall()
                     },
+                    onCancel = tripVm::cancel,
                 )
             } else {
                 CallSheet(
@@ -127,16 +131,23 @@ fun MapScreen(
                             .statusBarsPadding()
                             .padding(8.dp),
                     )
-                    // OSM 이용 조건: 지도 출처 표시
-                    Text(
-                        info.attribution,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Column(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
                             .padding(8.dp),
-                    )
+                        horizontalAlignment = Alignment.End,
+                    ) {
+                        // OSM 이용 조건: 지도 출처 표시
+                        Text(
+                            info.attribution,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        // 이용 내역 화면으로 (추가 기능)
+                        FilledTonalButton(onClick = onOpenHistory) { Text("이용 내역") }
+                    }
                 }
                 state.loading -> CircularProgressIndicator()
                 state.error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
