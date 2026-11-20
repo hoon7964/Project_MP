@@ -47,7 +47,6 @@ import com.dalmuri.bus.ui.theme.Ink
 import com.dalmuri.bus.ui.theme.MoonGold
 import com.dalmuri.bus.ui.theme.Night
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -71,7 +70,7 @@ fun MapLayer(
     onStopTap: (Stop?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var zoom by remember { mutableFloatStateOf(1f) }        // 1 = 화면에 시범지역 전체가 들어감
+    var zoom by remember { mutableFloatStateOf(1f) }        // 1 = 지도가 화면을 꽉 채움
     var pan by remember { mutableStateOf(Offset.Zero) }    // 화면 중앙에서 얼마나 옮겼는지 (px)
     val currentOnStopTap by rememberUpdatedState(onStopTap)
     val textMeasurer = rememberTextMeasurer()
@@ -80,8 +79,8 @@ fun MapLayer(
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
-        // 줌 1일 때 이미지 1px → 화면 몇 px. min = 지도 전체가 한눈에 들어감(위아래가 조금 빔). max로 바꾸면 화면을 꽉 채우고 양옆이 잘림
-        val fit = min(w / mapInfo.widthPx, h / mapInfo.heightPx)
+        // 줌 1일 때 이미지 1px → 화면 몇 px. max = 지도가 화면을 꽉 채움(남는 쪽은 잘리고 드래그로 봄). min이면 전체가 들어가고 위아래가 빔
+        val fit = max(w / mapInfo.widthPx, h / mapInfo.heightPx)
 
         /** 위도·경도 → 화면 좌표. 이미지 중심이 (화면 중심 + pan)에 오고, fit × zoom 배로 커진다 */
         fun toScreen(lat: Double, lng: Double): Offset {
